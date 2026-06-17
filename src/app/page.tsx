@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { INDICATOR_TYPES, INDICATORS, IndicatorType } from "@/lib/indicators";
 import IndicatorCard from "@/components/IndicatorCard";
+import RealtimeRefresh from "@/components/RealtimeRefresh";
+import { REALTIME_SYMBOLS } from "@/lib/collector";
 
 async function getLatestIndicators() {
   const results = await Promise.all(
@@ -51,31 +53,28 @@ function Divider({ label }: { label: string }) {
   );
 }
 
-export const revalidate = 900; // 15분 캐시
+export const dynamic = "force-dynamic"; // 항상 최신 DB 데이터 반환
+
+const REALTIME_TYPES = new Set<string>(REALTIME_SYMBOLS.map((s) => s.type));
 
 export default async function DashboardPage() {
   const indicators = await getLatestIndicators();
 
-  const updatedAt = new Date().toLocaleString("ko-KR", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  // 실시간 지표 중 가장 최근 업데이트 시각
+  const realtimeRecord = indicators.find((i) => REALTIME_TYPES.has(i.type));
+  const lastUpdated = realtimeRecord?.recordedAt ?? new Date().toISOString();
 
   return (
     <div className="space-y-6">
       {/* 페이지 헤더 */}
-      <div className="flex items-end justify-between">
+      <div className="flex items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">경제지표 대시보드</h1>
           <p className="text-sm text-gray-500 mt-1">
             퇴직연금(DC/IRP) 운용에 필요한 핵심 경제지표를 한눈에 확인하세요.
           </p>
         </div>
-        <span className="text-xs text-gray-400">기준: {updatedAt}</span>
+        <RealtimeRefresh lastUpdated={lastUpdated} />
       </div>
 
       {/* 지표 그룹: 금리 */}

@@ -28,10 +28,13 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts      Account[]
-  sessions      Session[]
-  riskProfile   RiskProfile?
-  alertSettings AlertSetting[]
+  accounts          Account[]
+  sessions          Session[]
+  riskProfile       RiskProfile?
+  alertSettings     AlertSetting[]
+  alertHistories    AlertHistory[]
+  favoriteEvents    FavoriteEvent[]
+  portfolioHoldings PortfolioHolding[]
 }
 
 model Account {
@@ -91,4 +94,41 @@ model AlertSetting {
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+// Phase 3: 알림 발송 이력
+model AlertHistory {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  indicatorType String
+  value         Float
+  threshold     Float
+  direction     String   // ABOVE | BELOW
+  channel       String   // PUSH | EMAIL
+  sentAt        DateTime @default(now())
+}
+
+// Phase 3: 경제 캘린더 즐겨찾기
+model FavoriteEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventKey  String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, eventKey])
+}
+
+// Phase 3: 수익률 트래커 보유 펀드
+model PortfolioHolding {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fundName     String
+  assetClass   String   // GUARANTEED | BOND | MIXED | EQUITY
+  weight       Float
+  purchaseDate DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

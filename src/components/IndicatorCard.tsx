@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import TrendChart from "./TrendChart";
+import { useState } from "react";
 import ChartModal from "./ChartModal";
 import { INDICATORS, IndicatorType, formatValue, isAnomaly } from "@/lib/indicators";
 
@@ -13,27 +12,20 @@ interface IndicatorData {
   changePercent: number;
 }
 
-export default function IndicatorCard({ data }: { data: IndicatorData }) {
-  const [sparkData, setSparkData] = useState<{ value: number; recordedAt: string }[]>([]);
-  const [modalOpen, setModalOpen] = useState(false);
+const FREQUENCY_LABEL: Record<string, string> = {
+  realtime: "실시간",
+  daily: "매일",
+  monthly: "월별",
+  event: "이벤트",
+};
 
-  useEffect(() => {
-    fetch(`/api/indicators/${data.type}/history?period=3m`)
-      .then((r) => r.json())
-      .then(setSparkData);
-  }, [data.type]);
+export default function IndicatorCard({ data }: { data: IndicatorData }) {
+  const [modalOpen, setModalOpen] = useState(false);
 
   const meta = INDICATORS[data.type];
   const anomaly = isAnomaly(data.type, data.value);
   const isPositive = data.change > 0;
   const isNeutral = data.change === 0;
-
-  const FREQUENCY_LABEL: Record<string, string> = {
-    realtime: "실시간",
-    daily: "매일",
-    monthly: "월별",
-    event: "이벤트",
-  };
 
   return (
     <>
@@ -78,15 +70,6 @@ export default function IndicatorCard({ data }: { data: IndicatorData }) {
             ({isPositive ? "+" : ""}
             {data.changePercent.toFixed(2)}%)
           </span>
-        </div>
-
-        {/* 스파크라인 — 항상 표시 */}
-        <div className="mt-1">
-          {sparkData.length > 0 ? (
-            <TrendChart type={data.type} data={sparkData} mini />
-          ) : (
-            <div className="h-[80px] rounded-lg bg-gray-100 animate-pulse" />
-          )}
         </div>
       </div>
 

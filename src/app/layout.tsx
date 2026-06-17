@@ -30,6 +30,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <Link href="/glossary" className="text-gray-600 hover:text-blue-600 transition-colors">
                   용어사전
                 </Link>
+                <Link href="/portfolio" className="text-gray-600 hover:text-blue-600 transition-colors">
+                  포트폴리오
+                </Link>
+                <Link href="/calendar" className="text-gray-600 hover:text-blue-600 transition-colors">
+                  캘린더
+                </Link>
+                <Link href="/alerts" className="text-gray-600 hover:text-blue-600 transition-colors">
+                  알림
+                </Link>
+                <Link href="/tracker" className="text-gray-600 hover:text-blue-600 transition-colors">
+                  수익률
+                </Link>
                 <AuthButton />
               </nav>
             </div>
