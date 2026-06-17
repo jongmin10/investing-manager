@@ -52,10 +52,14 @@ export default function PortfolioPage() {
   useEffect(() => {
     fetch("/api/portfolio")
       .then((r) => {
+        if (r.status === 401) { setNoProfile(true); setLoading(false); return null; }
         if (r.status === 404) { setNoProfile(true); setLoading(false); return null; }
         return r.json();
       })
-      .then((d) => { if (d) { setData(d); setLoading(false); } });
+      .then((d) => {
+        if (d && d.allocation) { setData(d); setLoading(false); }
+        else if (d) { setNoProfile(true); setLoading(false); }
+      });
   }, []);
 
   if (loading) {
@@ -223,33 +227,45 @@ export default function PortfolioPage() {
                 </div>
               ) : (
                 <div className="ml-4 space-y-2">
-                  {group.etfs.map((etf) => (
-                    <div key={etf.ticker} className="border border-gray-100 rounded-xl p-3.5 hover:border-gray-200 transition-colors">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                            <span className="text-sm font-semibold text-gray-800">{etf.name}</span>
-                            <span className="text-[11px] text-gray-400 font-mono bg-gray-50 px-1.5 py-0.5 rounded">
-                              {etf.ticker}
-                            </span>
+                  {group.etfs.map((etf) => {
+                    const ret = etf.cumulativeReturn;
+                    const retColor = ret >= 200 ? "#059669" : ret >= 80 ? "#16a34a" : ret >= 30 ? "#2563eb" : "#6b7280";
+                    const retBg   = ret >= 200 ? "#d1fae5" : ret >= 80 ? "#dcfce7" : ret >= 30 ? "#dbeafe" : "#f3f4f6";
+                    return (
+                      <div key={etf.ticker} className="border border-gray-100 rounded-xl p-3.5 hover:border-gray-200 transition-colors">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                              <span className="text-sm font-semibold text-gray-800">{etf.name}</span>
+                              <span className="text-[11px] text-gray-400 font-mono bg-gray-50 px-1.5 py-0.5 rounded">
+                                {etf.ticker}
+                              </span>
+                              {/* 누적 수익률 배지 */}
+                              <span
+                                className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+                                style={{ color: retColor, background: retBg }}
+                              >
+                                +{ret}% ({etf.returnPeriod})
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500">{etf.description}</p>
                           </div>
-                          <p className="text-xs text-gray-500">{etf.description}</p>
+                          <div className="text-right flex-shrink-0">
+                            <span className="text-base font-bold" style={{ color: group.color }}>
+                              {etf.portfolioPct}%
+                            </span>
+                            <p className="text-[11px] text-gray-400">포트폴리오</p>
+                          </div>
                         </div>
-                        <div className="text-right flex-shrink-0">
-                          <span className="text-base font-bold" style={{ color: group.color }}>
-                            {etf.portfolioPct}%
-                          </span>
-                          <p className="text-[11px] text-gray-400">포트폴리오</p>
+                        <div className="mt-2.5 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full"
+                            style={{ width: `${etf.portfolioPct}%`, background: group.color }}
+                          />
                         </div>
                       </div>
-                      <div className="mt-2.5 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full"
-                          style={{ width: `${etf.portfolioPct}%`, background: group.color }}
-                        />
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -259,6 +275,10 @@ export default function PortfolioPage() {
         <p className="mt-5 text-[11px] text-gray-400 leading-relaxed border-t border-gray-100 pt-4">
           위 ETF는 자산군별 대표 상품 예시이며, 실제 운용사 제공 상품과 다를 수 있습니다.
           투자 전 각 ETF의 운용보수, 추적오차, 유동성을 확인하세요.
+          <br />
+          <span className="text-[10px] text-gray-300">
+            누적 수익률은 기초지수 성과 기반 추정치(KRW 환산 포함)이며 실제 ETF 수익률과 다를 수 있습니다. 과거 성과는 미래 수익을 보장하지 않습니다.
+          </span>
         </p>
       </div>
 

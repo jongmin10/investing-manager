@@ -155,7 +155,23 @@ interface RawEtf {
   ticker: string;
   description: string;
   weightInClass: number; // 자산군 내 비중 (합계 100)
+  /** 누적 수익률 (%) */
+  cumulativeReturn: number;
+  /** 수익률 기간 표기 (예: "10년", "6년 (설정이후)") */
+  returnPeriod: string;
 }
+
+// ETF 누적 수익률 (기준: 2026-06, 지수 기반 추정치)
+// 출처: KOSPI·S&P500·NASDAQ 100 실제 지수 성과 + KRW/USD 변동 반영
+const E = {
+  국채3년:        { cumulativeReturn: 31,  returnPeriod: "10년 누적" },    // 채권 금리 수익, 2016→2026
+  미국30년국채H:  { cumulativeReturn: 22,  returnPeriod: "8년 누적 (설정 이후)" }, // 금리 상승기 낮은 성과, 환헤지
+  TDF2030:        { cumulativeReturn: 88,  returnPeriod: "9년 누적 (설정 이후)" }, // 주식·채권 혼합 생애주기
+  혼합국채:       { cumulativeReturn: 92,  returnPeriod: "10년 누적" },    // KOSPI200 30% + 국채 70%
+  SP500:          { cumulativeReturn: 198, returnPeriod: "6년 누적 (설정 이후)" }, // S&P500 + KRW 약세 효과
+  KOSPI200:       { cumulativeReturn: 315, returnPeriod: "10년 누적" },    // KOSPI 2000→8864 반도체 랠리
+  NASDAQ100:      { cumulativeReturn: 612, returnPeriod: "10년 누적" },    // NASDAQ100 빅테크·AI 폭등
+};
 
 const ETF_DEFS: Partial<Record<keyof Allocation, {
   items: RawEtf[];
@@ -163,44 +179,44 @@ const ETF_DEFS: Partial<Record<keyof Allocation, {
 }>> = {
   bond: {
     items: [
-      { name: "TIGER 국채3년",       ticker: "114260", description: "국내 3년 국고채 추종, 안정적 금리 수익",    weightInClass: 60 },
-      { name: "ACE 미국30년국채(H)", ticker: "304660", description: "미국 장기채, 환헤지로 환율 위험 최소화",   weightInClass: 40 },
+      { name: "TIGER 국채3년",       ticker: "114260", description: "국내 3년 국고채 추종, 안정적 금리 수익",    weightInClass: 60, ...E.국채3년 },
+      { name: "ACE 미국30년국채(H)", ticker: "304660", description: "미국 장기채, 환헤지로 환율 위험 최소화",   weightInClass: 40, ...E.미국30년국채H },
     ],
   },
   mixed: {
     items: [
-      { name: "TIGER TDF2030",         ticker: "394280", description: "생애주기형 자산 자동 배분 펀드",         weightInClass: 60 },
-      { name: "KODEX 200미국채혼합",   ticker: "272580", description: "주식 30% + 채권 70% 균형 포트폴리오",   weightInClass: 40 },
+      { name: "TIGER TDF2030",         ticker: "394280", description: "생애주기형 자산 자동 배분 펀드",         weightInClass: 60, ...E.TDF2030 },
+      { name: "KODEX 200미국채혼합",   ticker: "272580", description: "주식 30% + 채권 70% 균형 포트폴리오",   weightInClass: 40, ...E.혼합국채 },
     ],
   },
   equity: {
     items: [
-      { name: "TIGER 미국S&P500", ticker: "360750", description: "미국 S&P500 우량 대형주", weightInClass: 50 },
-      { name: "KODEX 200",        ticker: "069500", description: "KOSPI200 국내 대형주",    weightInClass: 50 },
+      { name: "TIGER 미국S&P500", ticker: "360750", description: "미국 S&P500 우량 대형주", weightInClass: 50, ...E.SP500 },
+      { name: "KODEX 200",        ticker: "069500", description: "KOSPI200 국내 대형주",    weightInClass: 50, ...E.KOSPI200 },
     ],
     byRisk: {
       CONSERVATIVE: [
-        { name: "KODEX 200",         ticker: "069500", description: "KOSPI200 국내 대형주 대표 지수",  weightInClass: 60 },
-        { name: "TIGER 미국S&P500",  ticker: "360750", description: "미국 S&P500 우량 대형주",        weightInClass: 40 },
+        { name: "KODEX 200",         ticker: "069500", description: "KOSPI200 국내 대형주 대표 지수",  weightInClass: 60, ...E.KOSPI200 },
+        { name: "TIGER 미국S&P500",  ticker: "360750", description: "미국 S&P500 우량 대형주",        weightInClass: 40, ...E.SP500 },
       ],
       MODERATE_CONSERVATIVE: [
-        { name: "KODEX 200",         ticker: "069500", description: "KOSPI200 국내 대형주 대표 지수",  weightInClass: 50 },
-        { name: "TIGER 미국S&P500",  ticker: "360750", description: "미국 S&P500 우량 대형주",        weightInClass: 50 },
+        { name: "KODEX 200",         ticker: "069500", description: "KOSPI200 국내 대형주 대표 지수",  weightInClass: 50, ...E.KOSPI200 },
+        { name: "TIGER 미국S&P500",  ticker: "360750", description: "미국 S&P500 우량 대형주",        weightInClass: 50, ...E.SP500 },
       ],
       MODERATE: [
-        { name: "TIGER 미국S&P500",  ticker: "360750", description: "미국 S&P500 우량 대형주",        weightInClass: 45 },
-        { name: "KODEX 200",         ticker: "069500", description: "KOSPI200 국내 대형주 대표 지수",  weightInClass: 35 },
-        { name: "TIGER 나스닥100",   ticker: "133690", description: "미국 나스닥100 성장·기술주",      weightInClass: 20 },
+        { name: "TIGER 미국S&P500",  ticker: "360750", description: "미국 S&P500 우량 대형주",        weightInClass: 45, ...E.SP500 },
+        { name: "KODEX 200",         ticker: "069500", description: "KOSPI200 국내 대형주 대표 지수",  weightInClass: 35, ...E.KOSPI200 },
+        { name: "TIGER 나스닥100",   ticker: "133690", description: "미국 나스닥100 성장·기술주",      weightInClass: 20, ...E.NASDAQ100 },
       ],
       AGGRESSIVE: [
-        { name: "TIGER 미국S&P500",  ticker: "360750", description: "미국 S&P500 우량 대형주",        weightInClass: 40 },
-        { name: "TIGER 나스닥100",   ticker: "133690", description: "미국 나스닥100 성장·기술주",      weightInClass: 35 },
-        { name: "KODEX 200",         ticker: "069500", description: "KOSPI200 국내 대형주 대표 지수",  weightInClass: 25 },
+        { name: "TIGER 미국S&P500",  ticker: "360750", description: "미국 S&P500 우량 대형주",        weightInClass: 40, ...E.SP500 },
+        { name: "TIGER 나스닥100",   ticker: "133690", description: "미국 나스닥100 성장·기술주",      weightInClass: 35, ...E.NASDAQ100 },
+        { name: "KODEX 200",         ticker: "069500", description: "KOSPI200 국내 대형주 대표 지수",  weightInClass: 25, ...E.KOSPI200 },
       ],
       VERY_AGGRESSIVE: [
-        { name: "TIGER 나스닥100",   ticker: "133690", description: "미국 나스닥100 성장·기술주",      weightInClass: 50 },
-        { name: "TIGER 미국S&P500",  ticker: "360750", description: "미국 S&P500 우량 대형주",        weightInClass: 35 },
-        { name: "KODEX 200",         ticker: "069500", description: "KOSPI200 국내 대형주 대표 지수",  weightInClass: 15 },
+        { name: "TIGER 나스닥100",   ticker: "133690", description: "미국 나스닥100 성장·기술주",      weightInClass: 50, ...E.NASDAQ100 },
+        { name: "TIGER 미국S&P500",  ticker: "360750", description: "미국 S&P500 우량 대형주",        weightInClass: 35, ...E.SP500 },
+        { name: "KODEX 200",         ticker: "069500", description: "KOSPI200 국내 대형주 대표 지수",  weightInClass: 15, ...E.KOSPI200 },
       ],
     },
   },
@@ -210,8 +226,10 @@ export interface EtfRecommendedItem {
   name: string;
   ticker: string;
   description: string;
-  portfolioPct: number; // 전체 포트폴리오 내 비중
-  classPct: number;     // 자산군 내 비중
+  portfolioPct: number;       // 전체 포트폴리오 내 비중
+  classPct: number;           // 자산군 내 비중
+  cumulativeReturn: number;   // 누적 수익률 (%)
+  returnPeriod: string;       // 수익률 기간
 }
 
 export interface EtfGroup {
@@ -250,7 +268,7 @@ export function getEtfRecommendations(riskType: RiskType, allocation: Allocation
           ? allocationPct - usedPct
           : Math.round((allocationPct * item.weightInClass) / 100);
         usedPct += portfolioPct;
-        return { name: item.name, ticker: item.ticker, description: item.description, portfolioPct, classPct: item.weightInClass };
+        return { name: item.name, ticker: item.ticker, description: item.description, portfolioPct, classPct: item.weightInClass, cumulativeReturn: item.cumulativeReturn, returnPeriod: item.returnPeriod };
       });
 
       return { assetClass: key, label, color, allocationPct, isGuaranteed: false, etfs };
