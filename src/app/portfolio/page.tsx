@@ -92,6 +92,31 @@ export default function PortfolioPage() {
   const hasSignalAdjust = data.signals.some((s) => s.allocationAdjust);
   const etfGroups = getEtfRecommendations(data.riskType, data.allocation);
 
+  // ── 포트폴리오 전체 수익률 계산 ──────────────────────────
+  // 원리금보장 추정: BOK 기준금리 평균 ~2.3% × 10년 = 25%
+  const GUARANTEED = { totalReturn: 25, years: 10 };
+
+  let wReturn = 0, wYears = 0;
+  for (const group of etfGroups) {
+    if (group.isGuaranteed) {
+      const w = group.allocationPct / 100;
+      wReturn += w * GUARANTEED.totalReturn;
+      wYears  += w * GUARANTEED.years;
+    } else {
+      for (const etf of group.etfs) {
+        const w = etf.portfolioPct / 100;
+        wReturn += w * etf.cumulativeReturn;
+        wYears  += w * etf.returnYears;
+      }
+    }
+  }
+  const portfolioReturn = parseFloat(wReturn.toFixed(1));
+  const portfolioYears  = parseFloat(wYears.toFixed(1));
+  const portfolioCagr   = portfolioYears > 0
+    ? parseFloat(((Math.pow(1 + wReturn / 100, 1 / wYears) - 1) * 100).toFixed(1))
+    : 0;
+  // ────────────────────────────────────────────────────────
+
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       {/* 헤더 */}
@@ -201,6 +226,39 @@ export default function PortfolioPage() {
         <div className="mb-5">
           <h2 className="font-semibold text-gray-900">ETF 포트폴리오 추천</h2>
           <p className="text-xs text-gray-400 mt-0.5">DC·IRP 퇴직연금 계좌에서 선택 가능한 ETF 기준</p>
+        </div>
+
+        {/* 포트폴리오 전체 수익률 요약 */}
+        <div className="mb-6 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 p-5 text-white">
+          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">
+            포트폴리오 예상 수익률 요약
+          </p>
+          <div className="grid grid-cols-2 gap-4 mb-3">
+            {/* 토탈 수익률 */}
+            <div>
+              <p className="text-[11px] text-slate-400 mb-0.5">토탈 수익률</p>
+              <p className="text-3xl font-bold text-emerald-400">
+                +{portfolioReturn}%
+              </p>
+            </div>
+            {/* 연평균(CAGR) */}
+            <div>
+              <p className="text-[11px] text-slate-400 mb-0.5">연평균 수익률 (CAGR)</p>
+              <p className="text-3xl font-bold text-emerald-400">
+                +{portfolioCagr}%
+                <span className="text-base font-normal text-slate-400">/년</span>
+              </p>
+            </div>
+          </div>
+          {/* 측정 기간 + 면책 */}
+          <div className="flex items-center justify-between border-t border-slate-700 pt-3 mt-1">
+            <p className="text-[11px] text-slate-500">
+              가중 측정 기간 약 {portfolioYears}년 · 원리금보장 2.3%/년 기준
+            </p>
+            <span className="text-[10px] text-slate-600 bg-slate-700/60 px-2 py-0.5 rounded-full">
+              추정치
+            </span>
+          </div>
         </div>
 
         <div className="space-y-6">
