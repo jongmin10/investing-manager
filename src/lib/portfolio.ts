@@ -157,20 +157,23 @@ interface RawEtf {
   weightInClass: number; // 자산군 내 비중 (합계 100)
   /** 누적 수익률 (%) */
   cumulativeReturn: number;
-  /** 수익률 기간 표기 (예: "10년", "6년 (설정이후)") */
+  /** 측정 기간 (년 수) — CAGR 계산에 사용 */
+  returnYears: number;
+  /** 수익률 기간 표기 (예: "10년", "6년 설정이후") */
   returnPeriod: string;
 }
 
 // ETF 누적 수익률 (기준: 2026-06, 지수 기반 추정치)
 // 출처: KOSPI·S&P500·NASDAQ 100 실제 지수 성과 + KRW/USD 변동 반영
+// CAGR = (1 + return/100)^(1/years) - 1
 const E = {
-  국채3년:        { cumulativeReturn: 31,  returnPeriod: "10년 누적" },    // 채권 금리 수익, 2016→2026
-  미국30년국채H:  { cumulativeReturn: 22,  returnPeriod: "8년 누적 (설정 이후)" }, // 금리 상승기 낮은 성과, 환헤지
-  TDF2030:        { cumulativeReturn: 88,  returnPeriod: "9년 누적 (설정 이후)" }, // 주식·채권 혼합 생애주기
-  혼합국채:       { cumulativeReturn: 92,  returnPeriod: "10년 누적" },    // KOSPI200 30% + 국채 70%
-  SP500:          { cumulativeReturn: 198, returnPeriod: "6년 누적 (설정 이후)" }, // S&P500 + KRW 약세 효과
-  KOSPI200:       { cumulativeReturn: 315, returnPeriod: "10년 누적" },    // KOSPI 2000→8864 반도체 랠리
-  NASDAQ100:      { cumulativeReturn: 612, returnPeriod: "10년 누적" },    // NASDAQ100 빅테크·AI 폭등
+  국채3년:        { cumulativeReturn: 31,  returnYears: 10, returnPeriod: "10년" },
+  미국30년국채H:  { cumulativeReturn: 22,  returnYears: 8,  returnPeriod: "8년 (설정이후)" },
+  TDF2030:        { cumulativeReturn: 88,  returnYears: 9,  returnPeriod: "9년 (설정이후)" },
+  혼합국채:       { cumulativeReturn: 92,  returnYears: 10, returnPeriod: "10년" },
+  SP500:          { cumulativeReturn: 198, returnYears: 6,  returnPeriod: "6년 (설정이후)" },
+  KOSPI200:       { cumulativeReturn: 315, returnYears: 10, returnPeriod: "10년" },
+  NASDAQ100:      { cumulativeReturn: 612, returnYears: 10, returnPeriod: "10년" },
 };
 
 const ETF_DEFS: Partial<Record<keyof Allocation, {
@@ -229,7 +232,9 @@ export interface EtfRecommendedItem {
   portfolioPct: number;       // 전체 포트폴리오 내 비중
   classPct: number;           // 자산군 내 비중
   cumulativeReturn: number;   // 누적 수익률 (%)
-  returnPeriod: string;       // 수익률 기간
+  returnYears: number;        // 측정 기간 (년)
+  returnPeriod: string;       // 수익률 기간 표기
+  cagr: number;               // 연평균 수익률 CAGR (%)
 }
 
 export interface EtfGroup {
@@ -268,7 +273,10 @@ export function getEtfRecommendations(riskType: RiskType, allocation: Allocation
           ? allocationPct - usedPct
           : Math.round((allocationPct * item.weightInClass) / 100);
         usedPct += portfolioPct;
-        return { name: item.name, ticker: item.ticker, description: item.description, portfolioPct, classPct: item.weightInClass, cumulativeReturn: item.cumulativeReturn, returnPeriod: item.returnPeriod };
+        const cagr = parseFloat(
+          ((Math.pow(1 + item.cumulativeReturn / 100, 1 / item.returnYears) - 1) * 100).toFixed(1)
+        );
+        return { name: item.name, ticker: item.ticker, description: item.description, portfolioPct, classPct: item.weightInClass, cumulativeReturn: item.cumulativeReturn, returnYears: item.returnYears, returnPeriod: item.returnPeriod, cagr };
       });
 
       return { assetClass: key, label, color, allocationPct, isGuaranteed: false, etfs };

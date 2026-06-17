@@ -235,20 +235,32 @@ export default function PortfolioPage() {
                       <div key={etf.ticker} className="border border-gray-100 rounded-xl p-3.5 hover:border-gray-200 transition-colors">
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
                               <span className="text-sm font-semibold text-gray-800">{etf.name}</span>
                               <span className="text-[11px] text-gray-400 font-mono bg-gray-50 px-1.5 py-0.5 rounded">
                                 {etf.ticker}
                               </span>
-                              {/* 누적 수익률 배지 */}
+                            </div>
+                            <p className="text-xs text-gray-500 mb-2">{etf.description}</p>
+                            {/* 수익률 지표 행 */}
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {/* 토탈 수익률 */}
                               <span
-                                className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+                                className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full"
                                 style={{ color: retColor, background: retBg }}
                               >
-                                +{ret}% ({etf.returnPeriod})
+                                토탈 +{ret}%
                               </span>
+                              {/* 연평균(CAGR) */}
+                              <span
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border"
+                                style={{ color: retColor, borderColor: retBg, background: "transparent" }}
+                              >
+                                연평균 +{etf.cagr}%
+                              </span>
+                              {/* 기간 */}
+                              <span className="text-[10px] text-gray-400">{etf.returnPeriod}</span>
                             </div>
-                            <p className="text-xs text-gray-500">{etf.description}</p>
                           </div>
                           <div className="text-right flex-shrink-0">
                             <span className="text-base font-bold" style={{ color: group.color }}>
