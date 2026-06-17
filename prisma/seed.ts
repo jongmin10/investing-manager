@@ -54,8 +54,10 @@ const SERIES: IndicatorSeries[] = [
   // ── 기타 거시지표 ─────────────────────────────────────────
   // 원/달러: 1,300 → 1,513 (원화 약세 지속, 실제 2026-06 약 1,514원)
   { type: "KRW_USD", frequency: "daily", baseValue: 1406, volatility: 8, reversion: 0.04, trend: 213 },
-  // 경기선행지수: 100 중심
+  // 한국 경기선행지수: 100 중심
   { type: "CLI", frequency: "monthly", baseValue: 100.0, volatility: 0.3, reversion: 0.2, trend: 0 },
+  // 미국 경기선행지수: AI 호황 이후 이란 충격으로 소폭 하락
+  { type: "US_CLI", frequency: "monthly", baseValue: 100.4, volatility: 0.25, reversion: 0.2, trend: 0 },
   // 한국 실업률: 3.00% → 2.70% (고용 안정)
   { type: "UNEMPLOYMENT", frequency: "monthly", baseValue: 2.85, volatility: 0.06, reversion: 0.2, trend: -0.3 },
   // 미국 실업률: 3.50% → 4.50% (노동시장 점진적 냉각)
@@ -169,6 +171,7 @@ async function main() {
       if (series.type === "SOX")            value = Math.max(2000, Math.min(12000, value));
       if (series.type === "KRW_USD")        value = Math.max(1150, Math.min(1700, value));
       if (series.type === "CLI")            value = Math.max(97, Math.min(104, value));
+      if (series.type === "US_CLI")         value = Math.max(97, Math.min(104, value));
       if (series.type === "FEAR_GREED")     value = Math.max(0, Math.min(100, value));
 
       const dp = ["GOV_BOND_3Y", "GOV_BOND_10Y", "US_TREASURY_2Y", "US_TREASURY_10Y",

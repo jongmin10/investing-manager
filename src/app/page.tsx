@@ -147,11 +147,20 @@ export default async function DashboardPage() {
       {/* 지표 그룹: 경기 */}
       <section>
         <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">경기</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {["CLI", "UNEMPLOYMENT", "US_UNEMPLOYMENT"].map((type) => {
-            const d = indicators.find((i) => i.type === type);
-            return d ? <IndicatorCard key={type} data={d} /> : null;
-          })}
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {["CLI", "UNEMPLOYMENT"].map((type) => {
+              const d = indicators.find((i) => i.type === type);
+              return d ? <IndicatorCard key={type} data={d} /> : null;
+            })}
+          </div>
+          <Divider label="미국" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {["US_CLI", "US_UNEMPLOYMENT"].map((type) => {
+              const d = indicators.find((i) => i.type === type);
+              return d ? <IndicatorCard key={type} data={d} /> : null;
+            })}
+          </div>
         </div>
       </section>
 

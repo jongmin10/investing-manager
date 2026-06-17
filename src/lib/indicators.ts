@@ -14,6 +14,7 @@ export type IndicatorType =
   | "PPI"
   | "KRW_USD"
   | "CLI"
+  | "US_CLI"
   | "UNEMPLOYMENT"
   | "US_CPI"
   | "US_PPI"
@@ -193,13 +194,24 @@ export const INDICATORS: Record<IndicatorType, IndicatorMeta> = {
   },
   CLI: {
     type: "CLI",
-    name: "경기선행지수 (CLI)",
+    name: "경기선행지수 (한국 CLI)",
     unit: "",
     source: "통계청 / OECD",
     frequency: "monthly",
-    description: "6~9개월 후 경기 방향을 예측하는 지수. 100 이상이면 경기 회복세를 의미합니다.",
+    description: "한국의 향후 6~9개월 경기 방향을 예측하는 지수. 100 이상이면 경기 확장세를 의미합니다.",
     glossary:
-      "경기선행지수(Composite Leading Indicator)는 앞으로 6~9개월 후의 경기 흐름을 예측하는 선행 통계입니다. OECD가 주요국별로 발표하며, 100을 기준으로 위에 있으면 경기 확장, 아래면 수축 국면입니다. 지수 방향성(상승/하락)이 절대값보다 중요합니다.",
+      "OECD가 발표하는 한국 복합경기선행지수(Composite Leading Indicator)입니다. 100을 기준으로 위에 있으면 경기 확장, 아래면 수축 국면입니다. 지수 방향성(상승/하락)이 절대값보다 중요하며, 6~9개월 선행 특성이 있습니다.",
+    decimalPlaces: 1,
+  },
+  US_CLI: {
+    type: "US_CLI",
+    name: "경기선행지수 (미국 CLI)",
+    unit: "",
+    source: "OECD",
+    frequency: "monthly",
+    description: "미국의 향후 6~9개월 경기 방향을 예측하는 지수. 100 이상이면 경기 확장세를 의미합니다.",
+    glossary:
+      "OECD가 발표하는 미국 복합경기선행지수(Composite Leading Indicator)입니다. 100을 기준으로 위에 있으면 미국 경기 확장, 아래면 수축 국면입니다. 미국 경기 선행지수는 글로벌 교역과 한국 수출에도 간접적으로 영향을 미칩니다.",
     decimalPlaces: 1,
   },
   UNEMPLOYMENT: {

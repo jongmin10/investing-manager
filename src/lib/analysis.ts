@@ -44,6 +44,7 @@ export function generateMarketSummary(indicators: Ind[]): MarketSummary {
   const krwUsd    = m.KRW_USD?.value        ?? 1300;
   const krwChg    = m.KRW_USD?.changePercent ?? 0;
   const cli       = m.CLI?.value            ?? 100;
+  const usCli     = m.US_CLI?.value         ?? 100;
   const fearGreed = m.FEAR_GREED?.value     ?? 50;
   const nasdaq100Chg = m.NASDAQ100?.changePercent ?? 0;
 
@@ -77,9 +78,10 @@ export function generateMarketSummary(indicators: Ind[]): MarketSummary {
   else if (usCpi < 2.5) score += 1;
   else if (usCpi < 2)   score += 2;
 
-  // 경기 선행지수
-  if      (cli > 101)  score += 1;
-  else if (cli < 99)   score -= 1;
+  // 경기 선행지수 (한국 + 미국 평균)
+  const avgCli = (cli + usCli) / 2;
+  if      (avgCli > 101)  score += 1;
+  else if (avgCli < 99)   score -= 1;
 
   // 투자 심리
   if      (fearGreed > 70) score += 1;
@@ -196,9 +198,9 @@ export function generateMarketSummary(indicators: Ind[]): MarketSummary {
                       "원화 강세 — 해외자산 환차익 감소, 국내자산 상대 유리";
 
     const cliNote =
-      cli > 101 ? ` · CLI ${fmt(cli, 1)} 경기 확장` :
-      cli < 99  ? ` · CLI ${fmt(cli, 1)} 경기 위축` :
-                  ` · CLI ${fmt(cli, 1)} 경기 보합`;
+      avgCli > 101 ? ` · KR CLI ${fmt(cli, 1)} / US CLI ${fmt(usCli, 1)} — 경기 확장` :
+      avgCli < 99  ? ` · KR CLI ${fmt(cli, 1)} / US CLI ${fmt(usCli, 1)} — 경기 위축` :
+                     ` · KR CLI ${fmt(cli, 1)} / US CLI ${fmt(usCli, 1)} — 경기 보합`;
 
     const sig: InsightPoint["signal"] =
       krwUsd > 1450 ? "warning" : krwUsd < 1200 ? "neutral" : "neutral";
