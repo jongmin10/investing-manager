@@ -1,0 +1,134 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Phase 1: 경제지표 시계열 데이터
+model IndicatorRecord {
+  id         String   @id @default(cuid())
+  type       String   // BOK_BASE_RATE, GOV_BOND_3Y, GOV_BOND_10Y, KOSPI, KOSDAQ,
+                      // SP500, CPI, PPI, KRW_USD, CLI, UNEMPLOYMENT, VIX
+  value      Float
+  recordedAt DateTime
+
+  @@index([type, recordedAt])
+}
+
+// Phase 2: 사용자 (NextAuth 연동)
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts          Account[]
+  sessions          Session[]
+  riskProfile       RiskProfile?
+  alertSettings     AlertSetting[]
+  alertHistories    AlertHistory[]
+  favoriteEvents    FavoriteEvent[]
+  portfolioHoldings PortfolioHolding[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Phase 2: 투자자 성향 설문 결과
+model RiskProfile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  riskType  String   // CONSERVATIVE | MODERATE_CONSERVATIVE | MODERATE | AGGRESSIVE | VERY_AGGRESSIVE
+  answers   String   // JSON: 설문 답변 배열
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Phase 3: 지표 알림 설정
+model AlertSetting {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  indicatorType String
+  threshold     Float
+  direction     String   // ABOVE | BELOW
+  channel       String   // PUSH | EMAIL
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// Phase 3: 알림 발송 이력
+model AlertHistory {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  indicatorType String
+  value         Float
+  threshold     Float
+  direction     String   // ABOVE | BELOW
+  channel       String   // PUSH | EMAIL
+  sentAt        DateTime @default(now())
+}
+
+// Phase 3: 경제 캘린더 즐겨찾기
+model FavoriteEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventKey  String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, eventKey])
+}
+
+// Phase 3: 수익률 트래커 보유 펀드
+model PortfolioHolding {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fundName     String
+  assetClass   String   // GUARANTEED | BOND | MIXED | EQUITY
+  weight       Float
+  purchaseDate DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
