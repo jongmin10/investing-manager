@@ -2,7 +2,9 @@ import { prisma } from "@/lib/prisma";
 import { INDICATOR_TYPES, INDICATORS, IndicatorType } from "@/lib/indicators";
 import IndicatorCard from "@/components/IndicatorCard";
 import RealtimeRefresh from "@/components/RealtimeRefresh";
+import MarketSummaryCard from "@/components/MarketSummary";
 import { REALTIME_SYMBOLS } from "@/lib/collector";
+import { generateMarketSummary } from "@/lib/analysis";
 
 async function getLatestIndicators() {
   const results = await Promise.all(
@@ -64,6 +66,8 @@ export default async function DashboardPage() {
   const realtimeRecord = indicators.find((i) => REALTIME_TYPES.has(i.type));
   const lastUpdated = realtimeRecord?.recordedAt ?? new Date().toISOString();
 
+  const summary = generateMarketSummary(indicators);
+
   return (
     <div className="space-y-6">
       {/* 페이지 헤더 */}
@@ -76,6 +80,9 @@ export default async function DashboardPage() {
         </div>
         <RealtimeRefresh lastUpdated={lastUpdated} />
       </div>
+
+      {/* 시장 분석 요약 */}
+      <MarketSummaryCard summary={summary} />
 
       {/* 지표 그룹: 금리 */}
       <section>
