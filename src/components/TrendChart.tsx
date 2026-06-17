@@ -30,6 +30,17 @@ function formatDate(iso: string, mini: boolean): string {
   return d.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
 }
 
+function formatYTick(v: number, dp: number): string {
+  if (v >= 10000) return (v / 1000).toFixed(0) + "K";
+  if (v >= 1000)  return (v / 1000).toFixed(1) + "K";
+  return v.toFixed(dp);
+}
+
+function formatTooltipValue(v: number, dp: number, unit: string): string {
+  const num = dp === 0 ? v.toLocaleString("ko-KR") : v.toFixed(dp);
+  return unit ? `${num} ${unit}` : num;
+}
+
 export default function TrendChart({ type, data, mini = false }: TrendChartProps) {
   const meta = INDICATORS[type];
   const color = "#3b82f6";
@@ -39,7 +50,7 @@ export default function TrendChart({ type, data, mini = false }: TrendChartProps
     value: d.value,
   }));
 
-  /* ── 스파크라인 (카드 내 항상 표시) ── */
+  /* ── 스파크라인 (카드 내 표시) ── */
   if (mini) {
     return (
       <ResponsiveContainer width="100%" height={80}>
@@ -53,29 +64,14 @@ export default function TrendChart({ type, data, mini = false }: TrendChartProps
           <XAxis dataKey="date" hide />
           <YAxis domain={["auto", "auto"]} hide />
           <Tooltip
-            formatter={(v) => [
-              Number(v).toFixed(meta.decimalPlaces) + (meta.unit ? ` ${meta.unit}` : ""),
-              meta.name,
-            ]}
+            formatter={(v) => [formatTooltipValue(Number(v), meta.decimalPlaces, meta.unit), meta.name]}
             labelStyle={{ fontSize: 11 }}
             contentStyle={{ fontSize: 11, borderRadius: "8px", border: "1px solid #e5e7eb" }}
           />
           {meta.anomalyThreshold && (
-            <ReferenceLine
-              y={meta.anomalyThreshold.value}
-              stroke="#ef4444"
-              strokeDasharray="3 3"
-              strokeWidth={1}
-            />
+            <ReferenceLine y={meta.anomalyThreshold.value} stroke="#ef4444" strokeDasharray="3 3" strokeWidth={1} />
           )}
-          <Area
-            type="monotone"
-            dataKey="value"
-            stroke={color}
-            strokeWidth={1.5}
-            fill={`url(#grad-${type})`}
-            dot={false}
-          />
+          <Area type="monotone" dataKey="value" stroke={color} strokeWidth={1.5} fill={`url(#grad-${type})`} dot={false} />
         </AreaChart>
       </ResponsiveContainer>
     );
@@ -83,6 +79,11 @@ export default function TrendChart({ type, data, mini = false }: TrendChartProps
 
   /* ── 모달용 상세 차트 ── */
   const tickInterval = Math.max(1, Math.floor(chartData.length / 7));
+
+  // 대형 숫자(주가지수 등) Y축 여백 동적 계산
+  const maxVal = Math.max(...data.map((d) => d.value));
+  const yWidth = maxVal >= 10000 ? 48 : maxVal >= 1000 ? 52 : 60;
+
   return (
     <ResponsiveContainer width="100%" height="100%">
       <AreaChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
@@ -102,16 +103,13 @@ export default function TrendChart({ type, data, mini = false }: TrendChartProps
         <YAxis
           domain={["auto", "auto"]}
           tick={{ fontSize: 11 }}
-          tickFormatter={(v) => v.toFixed(meta.decimalPlaces)}
-          width={60}
+          tickFormatter={(v) => formatYTick(v, meta.decimalPlaces)}
+          width={yWidth}
           tickLine={false}
           axisLine={false}
         />
         <Tooltip
-          formatter={(v) => [
-            Number(v).toFixed(meta.decimalPlaces) + (meta.unit ? ` ${meta.unit}` : ""),
-            meta.name,
-          ]}
+          formatter={(v) => [formatTooltipValue(Number(v), meta.decimalPlaces, meta.unit), meta.name]}
           labelStyle={{ fontSize: 12 }}
           contentStyle={{ fontSize: 12, borderRadius: "10px", border: "1px solid #e5e7eb" }}
         />
@@ -120,12 +118,7 @@ export default function TrendChart({ type, data, mini = false }: TrendChartProps
             y={meta.anomalyThreshold.value}
             stroke="#ef4444"
             strokeDasharray="4 4"
-            label={{
-              value: `임계값 ${meta.anomalyThreshold.value}`,
-              fill: "#ef4444",
-              fontSize: 11,
-              position: "insideTopRight",
-            }}
+            label={{ value: `임계값 ${meta.anomalyThreshold.value}`, fill: "#ef4444", fontSize: 11, position: "insideTopRight" }}
           />
         )}
         <Area

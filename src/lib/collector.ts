@@ -30,7 +30,12 @@ const YF_HEADERS = {
   Referer: "https://finance.yahoo.com/",
 };
 
-async function fetchQuote(yahoo: string): Promise<number | null> {
+interface QuoteResult {
+  price: number;
+  marketTime: Date; // 실제 마지막 거래 시각 (Yahoo Finance regularMarketTime)
+}
+
+async function fetchQuote(yahoo: string): Promise<QuoteResult | null> {
   const encoded = encodeURIComponent(yahoo);
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=1d&includePrePost=false`;
 
@@ -43,52 +48,71 @@ async function fetchQuote(yahoo: string): Promise<number | null> {
   if (!res.ok) return null;
 
   const json = await res.json();
-  const price = json?.chart?.result?.[0]?.meta?.regularMarketPrice;
-  return typeof price === "number" ? price : null;
+  const meta = json?.chart?.result?.[0]?.meta;
+  const price = meta?.regularMarketPrice;
+  const ts    = meta?.regularMarketTime; // Unix timestamp (seconds)
+
+  if (typeof price !== "number") return null;
+  // regularMarketTime이 없으면 현재 시각 사용
+  const marketTime = typeof ts === "number" ? new Date(ts * 1000) : new Date();
+  return { price, marketTime };
 }
 
 export async function collectRealtimeData(): Promise<CollectResult> {
-  const now = new Date();
   const results = await Promise.allSettled(
-    REALTIME_SYMBOLS.map((s) => fetchQuote(s.yahoo).then((v) => ({ ...s, value: v })))
+    REALTIME_SYMBOLS.map((s) => fetchQuote(s.yahoo).then((q) => ({ ...s, quote: q })))
   );
 
   const updated: string[] = [];
   const failed: string[] = [];
   const values: Record<string, number> = {};
-  const records: { type: string; value: number; recordedAt: Date }[] = [];
 
   for (const result of results) {
-    if (result.status === "fulfilled" && result.value.value !== null) {
-      const { type, value, dp } = result.value;
-      const rounded = parseFloat(value!.toFixed(dp));
-      records.push({ type, value: rounded, recordedAt: now });
-      values[type] = rounded;
-      updated.push(type);
-    } else {
+    if (result.status !== "fulfilled" || !result.value.quote) {
       const idx = results.indexOf(result);
       failed.push(REALTIME_SYMBOLS[idx]?.type ?? "unknown");
+      continue;
+    }
+
+    const { type, dp, quote } = result.value;
+    const rounded = parseFloat(quote.price.toFixed(dp));
+    const marketTime = quote.marketTime;
+
+    // marketTime 기준 UTC 날짜 범위 계산
+    const dayStr  = marketTime.toISOString().slice(0, 10);
+    const dayStart = new Date(dayStr + "T00:00:00.000Z");
+    const dayEnd   = new Date(dayStr + "T23:59:59.999Z");
+
+    // 해당 날짜에 이미 레코드가 있는지 확인
+    const existing = await prisma.indicatorRecord.findFirst({
+      where: { type, recordedAt: { gte: dayStart, lte: dayEnd } },
+      orderBy: { recordedAt: "desc" },
+    });
+
+    if (existing) {
+      // 값이 다를 때만 업데이트 (미세 오차 무시)
+      if (Math.abs(existing.value - rounded) > rounded * 0.0001) {
+        await prisma.indicatorRecord.update({
+          where: { id: existing.id },
+          data: { value: rounded, recordedAt: marketTime },
+        });
+        values[type] = rounded;
+        updated.push(type);
+      }
+      // 값이 같으면 DB 불필요 — 그래도 values에 추가 (UI 표시용)
+      values[type] = rounded;
+    } else {
+      // 새 레코드 삽입 (실제 거래 시각을 recordedAt으로 사용)
+      await prisma.indicatorRecord.create({
+        data: { type, value: rounded, recordedAt: marketTime },
+      });
+      values[type] = rounded;
+      updated.push(type);
     }
   }
 
-  if (records.length > 0) {
-    // 당일 중복 레코드 방지: 오늘 날짜 기존 레코드 삭제 후 재삽입
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-
-    await prisma.$transaction([
-      prisma.indicatorRecord.deleteMany({
-        where: {
-          type: { in: records.map((r) => r.type) },
-          recordedAt: { gte: todayStart },
-        },
-      }),
-      prisma.indicatorRecord.createMany({ data: records }),
-    ]);
-  }
-
   return {
-    success: records.length > 0,
+    success: Object.keys(values).length > 0,
     updated,
     failed,
     values,
