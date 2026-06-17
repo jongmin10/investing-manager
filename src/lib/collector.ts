@@ -2,13 +2,14 @@ import { prisma } from "./prisma";
 
 // 실시간 수집 대상 지표 — Yahoo Finance 심볼 매핑
 export const REALTIME_SYMBOLS = [
-  { type: "KOSPI",    yahoo: "^KS11",  dp: 1 },
-  { type: "KOSDAQ",   yahoo: "^KQ11",  dp: 2 },
-  { type: "SP500",    yahoo: "^GSPC",  dp: 2 },
-  { type: "NASDAQ100",yahoo: "^NDX",   dp: 2 },
-  { type: "SOX",      yahoo: "^SOX",   dp: 2 },
-  { type: "VIX",      yahoo: "^VIX",   dp: 2 },
-  { type: "KRW_USD",  yahoo: "KRW=X",  dp: 1 },
+  { type: "KOSPI",           yahoo: "^KS11",  dp: 1 },
+  { type: "KOSDAQ",          yahoo: "^KQ11",  dp: 2 },
+  { type: "SP500",           yahoo: "^GSPC",  dp: 2 },
+  { type: "NASDAQ100",       yahoo: "^NDX",   dp: 2 },
+  { type: "SOX",             yahoo: "^SOX",   dp: 2 },
+  { type: "VIX",             yahoo: "^VIX",   dp: 2 },
+  { type: "KRW_USD",         yahoo: "KRW=X",  dp: 1 },
+  { type: "US_TREASURY_10Y", yahoo: "^TNX",   dp: 2 },
 ] as const;
 
 export type RealtimeType = (typeof REALTIME_SYMBOLS)[number]["type"];
@@ -71,7 +72,19 @@ export async function collectRealtimeData(): Promise<CollectResult> {
   }
 
   if (records.length > 0) {
-    await prisma.indicatorRecord.createMany({ data: records });
+    // 당일 중복 레코드 방지: 오늘 날짜 기존 레코드 삭제 후 재삽입
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    await prisma.$transaction([
+      prisma.indicatorRecord.deleteMany({
+        where: {
+          type: { in: records.map((r) => r.type) },
+          recordedAt: { gte: todayStart },
+        },
+      }),
+      prisma.indicatorRecord.createMany({ data: records }),
+    ]);
   }
 
   return {
