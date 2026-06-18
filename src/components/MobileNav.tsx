@@ -4,11 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const TABS = [
-  { href: "/",          icon: "📊", label: "대시보드" },
-  { href: "/portfolio", icon: "💼", label: "포트폴리오" },
-  { href: "/tracker",   icon: "📈", label: "수익률" },
-  { href: "/calendar",  icon: "📅", label: "캘린더" },
-  { href: "/alerts",    icon: "🔔", label: "알림" },
+  { href: "/",           icon: "📊", label: "대시보드" },
+  { href: "/portfolio",  icon: "💼", label: "포트폴리오" },
+  { href: "/tracker",    icon: "📈", label: "수익률" },
+  { href: "/calculator", icon: "🧮", label: "계산기" },
+  { href: "/alerts",     icon: "🔔", label: "알림" },
 ];
 
 export default function MobileNav() {
