@@ -5,6 +5,9 @@ import Link from "next/link";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { Allocation, MarketSignal, RiskType, EtfGroup, getEtfRecommendations } from "@/lib/portfolio";
 
+const YEAR_OPTIONS = [1, 3, 5, 10, 20, 30];
+const GUARANTEED_CAGR = 2.3;
+
 interface PortfolioData {
   riskType: RiskType;
   riskTypeLabel: string;
@@ -44,10 +47,21 @@ function allocationToChart(alloc: Allocation) {
   ].filter((d) => d.value > 0);
 }
 
+function formatKRW(amount: number): string {
+  if (Math.abs(amount) >= 100_000_000) {
+    return `${amount >= 0 ? "+" : ""}${(amount / 100_000_000).toFixed(1)}억원`;
+  }
+  return `${amount >= 0 ? "+" : ""}${(amount / 10_000).toLocaleString("ko-KR", { maximumFractionDigits: 0 })}만원`;
+}
+
 export default function PortfolioPage() {
   const [data, setData] = useState<PortfolioData | null>(null);
   const [loading, setLoading] = useState(true);
   const [noProfile, setNoProfile] = useState(false);
+  const [selectedYears, setSelectedYears] = useState(10);
+  const [totalInvestmentInput, setTotalInvestmentInput] = useState("");
+
+  const totalInvestment = totalInvestmentInput ? parseFloat(totalInvestmentInput) * 10_000 : null;
 
   useEffect(() => {
     fetch("/api/portfolio")
@@ -92,29 +106,38 @@ export default function PortfolioPage() {
   const hasSignalAdjust = data.signals.some((s) => s.allocationAdjust);
   const etfGroups = getEtfRecommendations(data.riskType, data.allocation);
 
-  // ── 포트폴리오 전체 수익률 계산 ──────────────────────────
-  // 원리금보장 추정: BOK 기준금리 평균 ~2.3% × 10년 = 25%
-  const GUARANTEED = { totalReturn: 25, years: 10 };
-
-  let wReturn = 0, wYears = 0;
-  for (const group of etfGroups) {
-    if (group.isGuaranteed) {
-      const w = group.allocationPct / 100;
-      wReturn += w * GUARANTEED.totalReturn;
-      wYears  += w * GUARANTEED.years;
-    } else {
-      for (const etf of group.etfs) {
-        const w = etf.portfolioPct / 100;
-        wReturn += w * etf.cumulativeReturn;
-        wYears  += w * etf.returnYears;
-      }
-    }
+  // ── 선택 연도 기준 수익률 계산 ──────────────────────────
+  function calcReturn(cagr: number, years: number) {
+    return parseFloat(((Math.pow(1 + cagr / 100, years) - 1) * 100).toFixed(1));
   }
-  const portfolioReturn = parseFloat(wReturn.toFixed(1));
-  const portfolioYears  = parseFloat(wYears.toFixed(1));
-  const portfolioCagr   = portfolioYears > 0
-    ? parseFloat(((Math.pow(1 + wReturn / 100, 1 / wYears) - 1) * 100).toFixed(1))
-    : 0;
+
+  // ETF별 CAGR 목록 (guaranteed 포함)
+  const etfReturnRows = etfGroups.flatMap((group) => {
+    if (group.isGuaranteed) {
+      return [{
+        name: "원리금보장 상품",
+        ticker: "-",
+        portfolioPct: group.allocationPct,
+        cagr: GUARANTEED_CAGR,
+        estimatedReturn: calcReturn(GUARANTEED_CAGR, selectedYears),
+      }];
+    }
+    return group.etfs.map((etf) => ({
+      name: etf.name,
+      ticker: etf.ticker,
+      portfolioPct: etf.portfolioPct,
+      cagr: etf.cagr,
+      estimatedReturn: calcReturn(etf.cagr, selectedYears),
+    }));
+  });
+
+  // 포트폴리오 가중 수익률
+  const portfolioReturn = parseFloat(
+    etfReturnRows.reduce((sum, r) => sum + (r.portfolioPct / 100) * r.estimatedReturn, 0).toFixed(1)
+  );
+  const portfolioCagr = parseFloat(
+    etfReturnRows.reduce((sum, r) => sum + (r.portfolioPct / 100) * r.cagr, 0).toFixed(1)
+  );
   // ────────────────────────────────────────────────────────
 
   return (
@@ -228,39 +251,6 @@ export default function PortfolioPage() {
           <p className="text-xs text-gray-400 mt-0.5">DC·IRP 퇴직연금 계좌에서 선택 가능한 ETF 기준</p>
         </div>
 
-        {/* 포트폴리오 전체 수익률 요약 */}
-        <div className="mb-6 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 p-5 text-white">
-          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">
-            포트폴리오 예상 수익률 요약
-          </p>
-          <div className="grid grid-cols-2 gap-4 mb-3">
-            {/* 토탈 수익률 */}
-            <div>
-              <p className="text-[11px] text-slate-400 mb-0.5">토탈 수익률</p>
-              <p className="text-3xl font-bold text-emerald-400">
-                +{portfolioReturn}%
-              </p>
-            </div>
-            {/* 연평균(CAGR) */}
-            <div>
-              <p className="text-[11px] text-slate-400 mb-0.5">연평균 수익률 (CAGR)</p>
-              <p className="text-3xl font-bold text-emerald-400">
-                +{portfolioCagr}%
-                <span className="text-base font-normal text-slate-400">/년</span>
-              </p>
-            </div>
-          </div>
-          {/* 측정 기간 + 면책 */}
-          <div className="flex items-center justify-between border-t border-slate-700 pt-3 mt-1">
-            <p className="text-[11px] text-slate-500">
-              가중 측정 기간 약 {portfolioYears}년 · 원리금보장 2.3%/년 기준
-            </p>
-            <span className="text-[10px] text-slate-600 bg-slate-700/60 px-2 py-0.5 rounded-full">
-              추정치
-            </span>
-          </div>
-        </div>
-
         <div className="space-y-6">
           {etfGroups.map((group) => (
             <div key={group.assetClass}>
@@ -285,57 +275,33 @@ export default function PortfolioPage() {
                 </div>
               ) : (
                 <div className="ml-4 space-y-2">
-                  {group.etfs.map((etf) => {
-                    const ret = etf.cumulativeReturn;
-                    const retColor = ret >= 200 ? "#059669" : ret >= 80 ? "#16a34a" : ret >= 30 ? "#2563eb" : "#6b7280";
-                    const retBg   = ret >= 200 ? "#d1fae5" : ret >= 80 ? "#dcfce7" : ret >= 30 ? "#dbeafe" : "#f3f4f6";
-                    return (
-                      <div key={etf.ticker} className="border border-gray-100 rounded-xl p-3.5 hover:border-gray-200 transition-colors">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <span className="text-sm font-semibold text-gray-800">{etf.name}</span>
-                              <span className="text-[11px] text-gray-400 font-mono bg-gray-50 px-1.5 py-0.5 rounded">
-                                {etf.ticker}
-                              </span>
-                            </div>
-                            <p className="text-xs text-gray-500 mb-2">{etf.description}</p>
-                            {/* 수익률 지표 행 */}
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {/* 토탈 수익률 */}
-                              <span
-                                className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full"
-                                style={{ color: retColor, background: retBg }}
-                              >
-                                토탈 +{ret}%
-                              </span>
-                              {/* 연평균(CAGR) */}
-                              <span
-                                className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border"
-                                style={{ color: retColor, borderColor: retBg, background: "transparent" }}
-                              >
-                                연평균 +{etf.cagr}%
-                              </span>
-                              {/* 기간 */}
-                              <span className="text-[10px] text-gray-400">{etf.returnPeriod}</span>
-                            </div>
-                          </div>
-                          <div className="text-right flex-shrink-0">
-                            <span className="text-base font-bold" style={{ color: group.color }}>
-                              {etf.portfolioPct}%
+                  {group.etfs.map((etf) => (
+                    <div key={etf.ticker} className="border border-gray-100 rounded-xl p-3.5 hover:border-gray-200 transition-colors">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className="text-sm font-semibold text-gray-800">{etf.name}</span>
+                            <span className="text-[11px] text-gray-400 font-mono bg-gray-50 px-1.5 py-0.5 rounded">
+                              {etf.ticker}
                             </span>
-                            <p className="text-[11px] text-gray-400">포트폴리오</p>
                           </div>
+                          <p className="text-xs text-gray-500">{etf.description}</p>
                         </div>
-                        <div className="mt-2.5 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                          <div
-                            className="h-full rounded-full"
-                            style={{ width: `${etf.portfolioPct}%`, background: group.color }}
-                          />
+                        <div className="text-right flex-shrink-0">
+                          <span className="text-base font-bold" style={{ color: group.color }}>
+                            {etf.portfolioPct}%
+                          </span>
+                          <p className="text-[11px] text-gray-400">포트폴리오</p>
                         </div>
                       </div>
-                    );
-                  })}
+                      <div className="mt-2.5 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${etf.portfolioPct}%`, background: group.color }}
+                        />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -345,10 +311,142 @@ export default function PortfolioPage() {
         <p className="mt-5 text-[11px] text-gray-400 leading-relaxed border-t border-gray-100 pt-4">
           위 ETF는 자산군별 대표 상품 예시이며, 실제 운용사 제공 상품과 다를 수 있습니다.
           투자 전 각 ETF의 운용보수, 추적오차, 유동성을 확인하세요.
-          <br />
-          <span className="text-[10px] text-gray-300">
-            누적 수익률은 기초지수 성과 기반 추정치(KRW 환산 포함)이며 실제 ETF 수익률과 다를 수 있습니다. 과거 성과는 미래 수익을 보장하지 않습니다.
-          </span>
+        </p>
+      </div>
+
+      {/* 수익률 분석 */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+        {/* 헤더 + 연도 선택 */}
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <div>
+            <h2 className="font-semibold text-gray-900">수익률 분석</h2>
+            <p className="text-xs text-gray-400 mt-0.5">CAGR 기반 투자 기간별 예상 누적 수익률</p>
+          </div>
+          <div className="flex items-center gap-1.5 bg-gray-100 rounded-xl p-1">
+            {YEAR_OPTIONS.map((y) => (
+              <button
+                key={y}
+                onClick={() => setSelectedYears(y)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  selectedYears === y
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {y}년
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 총투자금 입력 */}
+        <div className="mb-5 flex items-center gap-3">
+          <label className="text-xs font-medium text-gray-500 whitespace-nowrap">총 투자금 (선택)</label>
+          <div className="relative flex-1 max-w-xs">
+            <input
+              type="number"
+              min={1}
+              placeholder="예: 3000"
+              value={totalInvestmentInput}
+              onChange={(e) => setTotalInvestmentInput(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-blue-300"
+            />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">만원</span>
+          </div>
+          {totalInvestmentInput && (
+            <button
+              onClick={() => setTotalInvestmentInput("")}
+              className="text-gray-300 hover:text-gray-500 text-lg leading-none"
+              title="초기화"
+            >
+              ×
+            </button>
+          )}
+        </div>
+
+        {/* 포트폴리오 전체 요약 카드 */}
+        <div className="mb-5 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 p-5 text-white">
+          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">
+            포트폴리오 예상 수익률 — {selectedYears}년 기준
+          </p>
+          {totalInvestment ? (
+            <>
+              <div className="grid grid-cols-3 gap-4 mb-3">
+                <div>
+                  <p className="text-[11px] text-slate-400 mb-0.5">누적 수익률</p>
+                  <p className="text-2xl font-bold text-emerald-400">+{portfolioReturn}%</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-slate-400 mb-0.5">수익금</p>
+                  <p className="text-2xl font-bold text-emerald-400">
+                    {formatKRW(totalInvestment * portfolioReturn / 100)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-slate-400 mb-0.5">평가금액</p>
+                  <p className="text-2xl font-bold text-white">
+                    {((totalInvestment + totalInvestment * portfolioReturn / 100) / 10_000).toLocaleString("ko-KR", { maximumFractionDigits: 0 })}만원
+                  </p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="grid grid-cols-2 gap-4 mb-3">
+              <div>
+                <p className="text-[11px] text-slate-400 mb-0.5">누적 수익률</p>
+                <p className="text-3xl font-bold text-emerald-400">+{portfolioReturn}%</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-slate-400 mb-0.5">연평균 수익률 (CAGR)</p>
+                <p className="text-3xl font-bold text-emerald-400">
+                  +{portfolioCagr}%
+                  <span className="text-base font-normal text-slate-400">/년</span>
+                </p>
+              </div>
+            </div>
+          )}
+          <div className="flex items-center justify-between border-t border-slate-700 pt-3 mt-1">
+            <p className="text-[11px] text-slate-500">
+              {totalInvestment
+                ? `투자원금 ${(totalInvestment / 10_000).toLocaleString("ko-KR")}만원 · CAGR +${portfolioCagr}%/년`
+                : "원리금보장 연 2.3% 기준 · 가중 평균"}
+            </p>
+            <span className="text-[10px] text-slate-600 bg-slate-700/60 px-2 py-0.5 rounded-full">추정치</span>
+          </div>
+        </div>
+
+        {/* ETF별 수익률 테이블 */}
+        <div className="space-y-2">
+          {etfReturnRows.map((row) => {
+            const ret = row.estimatedReturn;
+            const retColor = ret >= 200 ? "#059669" : ret >= 80 ? "#16a34a" : ret >= 30 ? "#2563eb" : "#6b7280";
+            const retBg    = ret >= 200 ? "#d1fae5" : ret >= 80 ? "#dcfce7" : ret >= 30 ? "#dbeafe" : "#f3f4f6";
+            return (
+              <div key={row.ticker} className="flex items-center justify-between gap-3 border border-gray-100 rounded-xl px-4 py-3 hover:border-gray-200 transition-colors">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium text-gray-800 truncate">{row.name}</span>
+                    {row.ticker !== "-" && (
+                      <span className="text-[11px] text-gray-400 font-mono bg-gray-50 px-1.5 py-0.5 rounded">{row.ticker}</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-0.5">연평균(CAGR) +{row.cagr}% · 비중 {row.portfolioPct}%</p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span
+                    className="text-sm font-bold px-3 py-1 rounded-full"
+                    style={{ color: retColor, background: retBg }}
+                  >
+                    +{ret}%
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <p className="mt-4 text-[11px] text-gray-400 leading-relaxed border-t border-gray-100 pt-4">
+          누적 수익률은 CAGR 기반 복리 추정치이며 실제 수익률과 다를 수 있습니다. 과거 성과는 미래 수익을 보장하지 않습니다.
         </p>
       </div>
 

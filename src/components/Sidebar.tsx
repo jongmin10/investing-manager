@@ -5,12 +5,13 @@ import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 
 const NAV_ITEMS = [
-  { href: "/",          icon: "📊", label: "대시보드" },
-  { href: "/glossary",  icon: "📖", label: "용어사전" },
-  { href: "/portfolio", icon: "💼", label: "포트폴리오" },
-  { href: "/calendar",  icon: "📅", label: "경제 캘린더" },
-  { href: "/alerts",    icon: "🔔", label: "알림 설정" },
-  { href: "/tracker",   icon: "📈", label: "수익률 트래커" },
+  { href: "/",            icon: "📊", label: "대시보드" },
+  { href: "/portfolio",   icon: "💼", label: "포트폴리오" },
+  { href: "/tracker",     icon: "📈", label: "수익률 트래커" },
+  { href: "/calculator",  icon: "🧮", label: "복리 계산기" },
+  { href: "/glossary",    icon: "📖", label: "용어사전" },
+  { href: "/calendar",    icon: "📅", label: "경제 캘린더" },
+  { href: "/alerts",      icon: "🔔", label: "알림 설정" },
 ];
 
 export default function Sidebar() {
