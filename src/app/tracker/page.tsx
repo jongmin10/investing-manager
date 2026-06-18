@@ -40,12 +40,24 @@ function ReturnBadge({ value }: { value: number }) {
   );
 }
 
+function formatKRW(amount: number): string {
+  if (Math.abs(amount) >= 100_000_000) {
+    const eok = amount / 100_000_000;
+    return `${eok >= 0 ? "+" : ""}${eok.toFixed(1)}억원`;
+  }
+  const man = amount / 10_000;
+  return `${man >= 0 ? "+" : ""}${man.toLocaleString("ko-KR", { maximumFractionDigits: 0 })}만원`;
+}
+
 export default function TrackerPage() {
   const [data, setData] = useState<TrackerData | null>(null);
   const [loading, setLoading] = useState(true);
   const [unauthorized, setUnauthorized] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [totalInvestmentInput, setTotalInvestmentInput] = useState("");
+
+  const totalInvestment = totalInvestmentInput ? parseFloat(totalInvestmentInput) * 10_000 : null;
 
   const [form, setForm] = useState({
     fundName: "",
@@ -236,13 +248,75 @@ export default function TrackerPage() {
           </div>
           <p className="text-xs text-gray-400 mb-5">추정 수익률이며 실제 결과와 다를 수 있습니다.</p>
 
-          {/* 총 수익률 */}
-          <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-xl text-center">
-            <p className="text-xs font-semibold text-blue-500 uppercase tracking-wide mb-1">포트폴리오 추정 수익률</p>
-            <p className={`text-3xl font-bold ${portfolio.totalReturn >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-              {portfolio.totalReturn >= 0 ? "+" : ""}{portfolio.totalReturn.toFixed(2)}%
-            </p>
+          {/* 총투자금 입력 */}
+          <div className="mb-5 flex items-center gap-3">
+            <label className="text-xs font-medium text-gray-500 whitespace-nowrap">총 투자금 (선택)</label>
+            <div className="relative flex-1 max-w-xs">
+              <input
+                type="number"
+                min={1}
+                placeholder="예: 3000"
+                value={totalInvestmentInput}
+                onChange={(e) => setTotalInvestmentInput(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-blue-300"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">만원</span>
+            </div>
+            {totalInvestmentInput && (
+              <button
+                onClick={() => setTotalInvestmentInput("")}
+                className="text-gray-300 hover:text-gray-500 text-lg leading-none"
+                title="초기화"
+              >
+                ×
+              </button>
+            )}
           </div>
+
+          {/* 총 수익률 + 수익금 */}
+          {totalInvestment ? (() => {
+            const profit = totalInvestment * (portfolio.totalReturn / 100);
+            const evaluation = totalInvestment + profit;
+            const isPos = portfolio.totalReturn >= 0;
+            return (
+              <div className="mb-6 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 p-5 text-white">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">포트폴리오 추정 수익</p>
+                <div className="grid grid-cols-3 gap-4 mb-3">
+                  <div>
+                    <p className="text-[11px] text-slate-400 mb-0.5">수익률</p>
+                    <p className={`text-2xl font-bold ${isPos ? "text-emerald-400" : "text-red-400"}`}>
+                      {isPos ? "+" : ""}{portfolio.totalReturn.toFixed(2)}%
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400 mb-0.5">수익금</p>
+                    <p className={`text-2xl font-bold ${isPos ? "text-emerald-400" : "text-red-400"}`}>
+                      {formatKRW(profit)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-400 mb-0.5">평가금액</p>
+                    <p className="text-2xl font-bold text-white">
+                      {(evaluation / 10_000).toLocaleString("ko-KR", { maximumFractionDigits: 0 })}만원
+                    </p>
+                  </div>
+                </div>
+                <div className="border-t border-slate-700 pt-3 mt-1 flex justify-between items-center">
+                  <p className="text-[11px] text-slate-500">
+                    투자원금 {(totalInvestment / 10_000).toLocaleString("ko-KR")}만원 기준
+                  </p>
+                  <span className="text-[10px] text-slate-600 bg-slate-700/60 px-2 py-0.5 rounded-full">추정치</span>
+                </div>
+              </div>
+            );
+          })() : (
+            <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-xl text-center">
+              <p className="text-xs font-semibold text-blue-500 uppercase tracking-wide mb-1">포트폴리오 추정 수익률</p>
+              <p className={`text-3xl font-bold ${portfolio.totalReturn >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                {portfolio.totalReturn >= 0 ? "+" : ""}{portfolio.totalReturn.toFixed(2)}%
+              </p>
+            </div>
+          )}
 
           <div className="h-48">
             <ResponsiveContainer width="100%" height="100%">
