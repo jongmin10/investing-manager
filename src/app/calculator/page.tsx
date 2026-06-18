@@ -7,11 +7,6 @@ import {
 
 type Mode = "accumulate" | "target";
 
-const SCENARIOS = [
-  { label: "안정형", sub: "채권 중심", rate: 3,  color: "#10b981", text: "text-emerald-600" },
-  { label: "중립형", sub: "균형 배분", rate: 7,  color: "#3b82f6", text: "text-blue-600" },
-  { label: "공격형", sub: "주식 중심", rate: 12, color: "#ef4444", text: "text-red-500" },
-];
 
 function calcFV(monthlyPmt: number, annualRate: number, years: number): number {
   const r = annualRate / 100 / 12;
@@ -57,23 +52,23 @@ function SliderInput({
 }) {
   return (
     <div>
-      <div className="flex justify-between items-center mb-1.5">
-        <label className="text-xs font-medium text-gray-600">{label}</label>
-        <div className="flex items-center gap-1">
+      <div className="flex justify-between items-center mb-2">
+        <label className="text-sm font-medium text-gray-700">{label}</label>
+        <div className="flex items-center gap-1.5">
           <input
             type="number" min={min} max={max} step={step} value={value}
             onChange={(e) => onChange(Math.min(max, Math.max(min, Number(e.target.value))))}
-            className="w-16 border border-gray-200 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-300"
+            className="w-24 border border-gray-200 rounded-lg px-2 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-300"
           />
-          <span className="text-xs text-gray-400 w-5">{unit}</span>
+          <span className="text-sm text-gray-500 w-6">{unit}</span>
         </div>
       </div>
       <input
         type="range" min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-blue-500 h-1.5"
+        className="w-full accent-blue-500"
       />
-      <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+      <div className="flex justify-between text-xs text-gray-400 mt-1">
         <span>{tickLeft}</span><span>{tickRight}</span>
       </div>
     </div>
@@ -108,16 +103,6 @@ export default function CalculatorPage() {
     [neededPMTMan, targetRate, targetYears]
   );
 
-  // 시나리오
-  const scenarios = useMemo(() =>
-    SCENARIOS.map((s) => {
-      const fv = calcFV(monthly * 10_000, s.rate, years);
-      const p  = monthly * 10_000 * years * 12;
-      return { ...s, fv, profit: fv - p };
-    }),
-    [monthly, years]
-  );
-
   const xInterval = (y: number) => Math.max(0, Math.ceil(y / 8) - 1);
 
   const isAccum = mode === "accumulate";
@@ -131,8 +116,8 @@ export default function CalculatorPage() {
       {/* ── 헤더 + 모드 토글 ── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">복리 계산기</h1>
-          <p className="text-xs text-gray-400 mt-0.5">월 투자금과 기간을 설정해 미래 자산을 시뮬레이션하세요.</p>
+          <h1 className="text-2xl font-bold text-gray-900">복리 계산기</h1>
+          <p className="text-sm text-gray-400 mt-0.5">월 투자금과 기간을 설정해 미래 자산을 시뮬레이션하세요.</p>
         </div>
         <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
           {([["accumulate", "적립식 계산"], ["target", "목표 역산"]] as [Mode, string][]).map(([m, label]) => (
@@ -154,9 +139,9 @@ export default function CalculatorPage() {
 
         {/* 왼쪽: 입력 */}
         <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+          <h2 className="font-semibold text-gray-900">
             {isAccum ? "투자 설정" : "목표 설정"}
-          </p>
+          </h2>
           {isAccum ? (
             <>
               <SliderInput label="월 투자금"       value={monthly} onChange={setMonthly} min={10}   max={500}    step={10}  unit="만원" tickLeft="10만원"    tickRight="500만원" />
@@ -177,46 +162,46 @@ export default function CalculatorPage() {
 
           {/* 요약 카드 */}
           <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 px-5 py-4 text-white">
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-2">
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">
               {isAccum
                 ? `${years}년 후 예상 자산 — 월 ${monthly.toLocaleString()}만원 · 연 ${rate}%`
                 : `필요 월 투자금 — 목표 ${fmt(targetMan * 10_000)} · ${targetYears}년 · 연 ${targetRate}%`}
             </p>
             {isAccum ? (
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <p className="text-[10px] text-slate-400 mb-0.5">최종 금액</p>
-                  <p className="text-xl font-bold text-emerald-400">{fmt(fv)}</p>
+                  <p className="text-[11px] text-slate-400 mb-0.5">최종 금액</p>
+                  <p className="text-2xl font-bold text-emerald-400">{fmt(fv)}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] text-slate-400 mb-0.5">총 투자금</p>
-                  <p className="text-xl font-bold text-white">{fmt(principal)}</p>
+                  <p className="text-[11px] text-slate-400 mb-0.5">총 투자금</p>
+                  <p className="text-2xl font-bold text-white">{fmt(principal)}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] text-slate-400 mb-0.5">수익금</p>
-                  <p className="text-xl font-bold text-emerald-400">+{fmt(profit)}</p>
+                  <p className="text-[11px] text-slate-400 mb-0.5">수익금</p>
+                  <p className="text-2xl font-bold text-emerald-400">+{fmt(profit)}</p>
                 </div>
               </div>
             ) : validTarget ? (
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <p className="text-[10px] text-slate-400 mb-0.5">월 투자금</p>
-                  <p className="text-xl font-bold text-emerald-400">{fmt(neededPMTMan * 10_000)}</p>
+                  <p className="text-[11px] text-slate-400 mb-0.5">월 투자금</p>
+                  <p className="text-2xl font-bold text-emerald-400">{fmt(neededPMTMan * 10_000)}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] text-slate-400 mb-0.5">총 납입금</p>
-                  <p className="text-xl font-bold text-white">{fmt(totalPaid)}</p>
+                  <p className="text-[11px] text-slate-400 mb-0.5">총 납입금</p>
+                  <p className="text-2xl font-bold text-white">{fmt(totalPaid)}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] text-slate-400 mb-0.5">예상 수익금</p>
-                  <p className="text-xl font-bold text-emerald-400">+{fmt(Math.max(0, targetProfit))}</p>
+                  <p className="text-[11px] text-slate-400 mb-0.5">예상 수익금</p>
+                  <p className="text-2xl font-bold text-emerald-400">+{fmt(Math.max(0, targetProfit))}</p>
                 </div>
               </div>
             ) : (
               <p className="text-sm text-slate-400">수익률 또는 기간을 조정해주세요.</p>
             )}
-            <div className="flex items-center justify-between border-t border-slate-700/60 pt-2 mt-2">
-              <p className="text-[10px] text-slate-500">
+            <div className="flex items-center justify-between border-t border-slate-700/60 pt-2 mt-3">
+              <p className="text-[11px] text-slate-500">
                 {isAccum
                   ? `수익률 +${returnPct.toFixed(1)}% · 총 ${years * 12}개월 납입`
                   : `목표 ${fmt(targetMan * 10_000)} 달성 시뮬레이션`}
@@ -228,26 +213,26 @@ export default function CalculatorPage() {
           {/* 차트 */}
           <div className="bg-white border border-gray-200 rounded-2xl px-5 pt-4 pb-3 shadow-sm">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold text-gray-700">연도별 자산 성장</p>
+              <p className="text-sm font-semibold text-gray-700">연도별 자산 성장</p>
               <div className="flex gap-3">
-                <div className="flex items-center gap-1 text-[10px] text-gray-500"><span className="w-2.5 h-2.5 rounded-sm bg-blue-200" />원금</div>
-                <div className="flex items-center gap-1 text-[10px] text-gray-500"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-200" />복리 수익</div>
+                <div className="flex items-center gap-1 text-xs text-gray-500"><span className="w-2.5 h-2.5 rounded-sm bg-blue-200" />원금</div>
+                <div className="flex items-center gap-1 text-xs text-gray-500"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-200" />복리 수익</div>
               </div>
             </div>
             <div className="h-44">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={activeChart} margin={{ top: 2, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="year" tick={{ fontSize: 10 }} interval={xInterval(activeYears)} />
+                  <XAxis dataKey="year" tick={{ fontSize: 12 }} interval={xInterval(activeYears)} />
                   <YAxis
-                    tick={{ fontSize: 10 }}
+                    tick={{ fontSize: 12 }}
                     tickFormatter={(v) => v >= 10_000 ? `${(v / 10_000).toFixed(0)}억` : `${v}만`}
-                    width={42}
+                    width={46}
                   />
                   <Tooltip
                     formatter={(v: number, name: string) => [`${v.toLocaleString()}만원`, name]}
-                    labelStyle={{ fontWeight: 600, fontSize: 11 }}
-                    contentStyle={{ fontSize: 11 }}
+                    labelStyle={{ fontWeight: 600, fontSize: 12 }}
+                    contentStyle={{ fontSize: 12 }}
                   />
                   <Area type="monotone" dataKey="원금" stackId="1" stroke="#93c5fd" fill="#dbeafe" strokeWidth={1.5} />
                   <Area type="monotone" dataKey="수익" stackId="1" stroke="#34d399" fill="#d1fae5" strokeWidth={1.5} />
@@ -258,35 +243,7 @@ export default function CalculatorPage() {
         </div>
       </div>
 
-      {/* ── 시나리오 비교 3컬럼 (적립식 모드만) ── */}
-      {isAccum && (
-        <div className="grid grid-cols-3 gap-3">
-          {scenarios.map((s) => {
-            const isActive = s.rate === rate;
-            return (
-              <div
-                key={s.label}
-                className={`rounded-xl px-4 py-3 border transition-colors ${
-                  isActive ? "border-blue-300 bg-blue-50/50" : "border-gray-100 bg-white"
-                } shadow-sm`}
-              >
-                <div className="flex items-center gap-2 mb-1.5">
-                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: s.color }} />
-                  <span className="text-xs font-semibold text-gray-700">{s.label}</span>
-                  <span className="text-[10px] text-gray-400">{s.sub} · 연 {s.rate}%</span>
-                  {isActive && (
-                    <span className="text-[9px] font-semibold text-blue-500 bg-blue-100 px-1.5 py-0.5 rounded-full ml-auto">현재</span>
-                  )}
-                </div>
-                <p className={`text-base font-bold ${s.text}`}>{fmt(s.fv)}</p>
-                <p className="text-[11px] text-gray-400">수익 +{fmt(s.profit)}</p>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      <p className="text-[10px] text-gray-400 text-center pb-1">
+      <p className="text-xs text-gray-400 text-center pb-1">
         복리 원리 기반 시뮬레이션 · 실제 투자 결과와 다를 수 있습니다.
       </p>
     </div>
