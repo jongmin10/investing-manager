@@ -69,8 +69,8 @@ const STOCKS = [
   { id: "021240", name: "코웨이",          market: "KOSPI",  sector: "환경가전",     yahooSymbol: "021240.KS" },
   { id: "004370", name: "농심",            market: "KOSPI",  sector: "식품",         yahooSymbol: "004370.KS" },
   { id: "011200", name: "HMM",             market: "KOSPI",  sector: "해운",         yahooSymbol: "011200.KS" },
-  { id: "010620", name: "HD현대미포",      market: "KOSPI",  sector: "조선",         yahooSymbol: "010620.KS" },
-  { id: "001570", name: "금양",            market: "KOSPI",  sector: "2차전지",      yahooSymbol: "001570.KS" },
+  // 010620 HD현대미포 — Yahoo 심볼 없음(상장폐지 의심)으로 제거 (2026-06-19)
+  // 001570 금양 — 거래 정지로 제거 (2026-06-19)
   { id: "003490", name: "대한항공",        market: "KOSPI",  sector: "항공",         yahooSymbol: "003490.KS" },
   { id: "005945", name: "NH투자증권",      market: "KOSPI",  sector: "금융",         yahooSymbol: "005945.KS" },
   { id: "000120", name: "CJ대한통운",      market: "KOSPI",  sector: "물류",         yahooSymbol: "000120.KS" },
@@ -92,7 +92,7 @@ const STOCKS = [
   { id: "058470", name: "리노공업",        market: "KOSDAQ", sector: "반도체",       yahooSymbol: "058470.KQ" },
   { id: "068760", name: "셀트리온제약",    market: "KOSDAQ", sector: "제약",         yahooSymbol: "068760.KQ" },
   { id: "293490", name: "카카오게임즈",    market: "KOSDAQ", sector: "게임",         yahooSymbol: "293490.KQ" },
-  { id: "066970", name: "엘앤에프",        market: "KOSDAQ", sector: "2차전지소재",  yahooSymbol: "066970.KQ" },
+  // 066970 엘앤에프 — Yahoo 심볼 없음으로 제거 (2026-06-19)
   { id: "214150", name: "클래시스",        market: "KOSDAQ", sector: "의료기기",     yahooSymbol: "214150.KQ" },
   { id: "277810", name: "레인보우로보틱스", market: "KOSDAQ", sector: "로봇",        yahooSymbol: "277810.KQ" },
   { id: "041510", name: "에스엠",          market: "KOSDAQ", sector: "엔터테인먼트", yahooSymbol: "041510.KQ" },
@@ -100,7 +100,7 @@ const STOCKS = [
   { id: "122870", name: "와이지엔터테인먼트", market: "KOSDAQ", sector: "엔터테인먼트", yahooSymbol: "122870.KQ" },
   { id: "263750", name: "펄어비스",        market: "KOSDAQ", sector: "게임",         yahooSymbol: "263750.KQ" },
   { id: "251270", name: "넷마블",          market: "KOSDAQ", sector: "게임",         yahooSymbol: "251270.KQ" },
-  { id: "091990", name: "셀트리온헬스케어", market: "KOSDAQ", sector: "바이오",      yahooSymbol: "091990.KQ" },
+  // 091990 셀트리온헬스케어 — 셀트리온(068270) 합병 상장폐지로 제거 (2026-06-19)
   { id: "145020", name: "휴젤",            market: "KOSDAQ", sector: "바이오",       yahooSymbol: "145020.KQ" },
   { id: "000250", name: "삼천당제약",      market: "KOSDAQ", sector: "제약",         yahooSymbol: "000250.KQ" },
   { id: "018290", name: "브이티",          market: "KOSDAQ", sector: "뷰티",         yahooSymbol: "018290.KQ" },
