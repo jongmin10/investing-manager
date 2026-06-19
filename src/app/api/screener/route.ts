@@ -68,11 +68,21 @@ export async function GET(req: NextRequest) {
     revenue: number | null; operatingProfit: number | null;
     revenueGrowth: number | null; opGrowth: number | null;
     netGrowth: number | null; opMargin: number | null;
+    // 가치지표
+    eps: number | null; bps: number | null; dps: number | null;
+    per: number | null; pbr: number | null; dividendYield: number | null;
     period: string | null;
   };
 
   let items: Item[] = snapshots.map((s) => {
     const fin = financialMap.get(s.stockId);
+    const eps = fin?.eps ?? null;
+    const bps = fin?.bps ?? null;
+    const dps = fin?.dps ?? null;
+    const per = eps && eps > 0 && s.price > 0 ? parseFloat((s.price / eps).toFixed(1)) : null;
+    const pbr = bps && bps > 0 && s.price > 0 ? parseFloat((s.price / bps).toFixed(2)) : null;
+    const dividendYield = dps && dps > 0 && s.price > 0
+      ? parseFloat((dps / s.price * 100).toFixed(2)) : null;
     return {
       id: s.stockId, name: s.stock.name,
       market: s.stock.market, sector: s.stock.sector,
@@ -86,7 +96,8 @@ export async function GET(req: NextRequest) {
       opGrowth:        fin?.opGrowth        ?? null,
       netGrowth:       fin?.netGrowth       ?? null,
       opMargin:        fin?.opMargin        ?? null,
-      period:          fin?.period          ?? null,
+      eps, bps, dps, per, pbr, dividendYield,
+      period: fin?.period ?? null,
     };
   });
 

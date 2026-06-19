@@ -10,6 +10,8 @@ interface StockItem {
   revenue: number | null; operatingProfit: number | null;
   revenueGrowth: number | null; opGrowth: number | null;
   netGrowth: number | null; opMargin: number | null;
+  eps: number | null; bps: number | null; dps: number | null;
+  per: number | null; pbr: number | null; dividendYield: number | null;
   period: string | null;
 }
 
@@ -380,12 +382,13 @@ export default function ScreenerPage() {
         </div>
 
         {/* 컬럼 헤더 */}
-        <div className="grid grid-cols-[2fr_1fr_1fr_1.8fr_1.8fr_auto] gap-x-3 px-5 py-2 bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+        <div className="grid grid-cols-[2fr_1fr_1fr_1.8fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-2 bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
           <span>종목</span>
           <span className="text-right">현재가</span>
           <span className="text-right">등락률</span>
           <span>52주 고가 근접</span>
           <span className="text-center">재무 (YoY)</span>
+          <span className="text-center">가치지표</span>
           <span className="w-8" />
         </div>
 
@@ -393,10 +396,11 @@ export default function ScreenerPage() {
         {loading && (
           <div className="divide-y divide-gray-50">
             {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="grid grid-cols-[2fr_1fr_1fr_1.8fr_1.8fr_auto] gap-x-3 px-5 py-3.5 animate-pulse">
+              <div key={i} className="grid grid-cols-[2fr_1fr_1fr_1.8fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-3.5 animate-pulse">
                 <div className="h-4 bg-gray-100 rounded w-3/4" />
                 <div className="h-4 bg-gray-100 rounded" />
                 <div className="h-4 bg-gray-100 rounded w-3/4 ml-auto" />
+                <div className="h-4 bg-gray-100 rounded" />
                 <div className="h-4 bg-gray-100 rounded" />
                 <div className="h-4 bg-gray-100 rounded" />
                 <div className="w-8" />
@@ -426,7 +430,7 @@ export default function ScreenerPage() {
 
               return (
                 <div key={item.id}
-                  className="grid grid-cols-[2fr_1fr_1fr_1.8fr_1.8fr_auto] gap-x-3 px-5 py-3.5 hover:bg-gray-50/70 transition-colors items-center">
+                  className="grid grid-cols-[2fr_1fr_1fr_1.8fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-3.5 hover:bg-gray-50/70 transition-colors items-center">
 
                   {/* 종목명 */}
                   <div className="min-w-0">
@@ -484,6 +488,20 @@ export default function ScreenerPage() {
                     )}
                   </div>
 
+                  {/* 가치지표: PER·EPS·PBR·배당수익률 */}
+                  <div className="flex flex-col gap-0.5">
+                    {item.per != null || item.pbr != null || item.dividendYield != null ? (
+                      <>
+                        <ValBadge label="PER"  value={item.per}          unit="x"  low />
+                        <ValBadge label="EPS"  value={item.eps}          unit="원" raw />
+                        <ValBadge label="PBR"  value={item.pbr}          unit="x"  low />
+                        <ValBadge label="배당" value={item.dividendYield} unit="%" />
+                      </>
+                    ) : (
+                      <span className="text-[11px] text-gray-300 text-center">-</span>
+                    )}
+                  </div>
+
                   {/* 네이버 금융 링크 */}
                   <div className="w-8 flex justify-center">
                     <a href={`https://finance.naver.com/item/main.naver?code=${item.id}`}
@@ -530,6 +548,35 @@ function FilterInput({ label, value, onChange }: {
       <span className="text-xs text-gray-500 whitespace-nowrap">{label}</span>
       <NumInput value={value} onChange={onChange} placeholder="0" width="w-16" />
       <span className="text-xs text-gray-400">% 이상</span>
+    </div>
+  );
+}
+
+// 가치지표 배지: PER·EPS·PBR·배당수익률
+function ValBadge({
+  label, value, unit, low = false, raw = false,
+}: {
+  label: string; value: number | null; unit: string; low?: boolean; raw?: boolean;
+}) {
+  if (value == null) return null;
+  let display: string;
+  if (raw) {
+    // EPS: 원 단위 포맷
+    display = value >= 10_000
+      ? (value / 10_000).toFixed(0) + "만"
+      : value.toLocaleString("ko-KR");
+  } else {
+    display = value.toFixed(unit === "%" ? 2 : 1);
+  }
+  // PER·PBR: 낮을수록 좋음(low=true), 배당: 높을수록 좋음
+  const color = raw ? "text-gray-600"
+    : low
+      ? (value < 10 ? "text-emerald-600" : value < 20 ? "text-blue-500" : "text-gray-500")
+      : (value >= 3 ? "text-emerald-600" : value >= 1 ? "text-blue-500" : "text-gray-400");
+  return (
+    <div className="flex items-center justify-between gap-1 px-1.5 py-0.5 rounded text-[10px] bg-gray-50">
+      <span className="text-gray-400">{label}</span>
+      <span className={`font-bold ${color}`}>{display}{unit}</span>
     </div>
   );
 }
