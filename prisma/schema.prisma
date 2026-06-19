@@ -132,3 +132,54 @@ model PortfolioHolding {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
+
+// 스크리너: 종목 마스터
+model Stock {
+  id          String           @id        // 종목코드 6자리 (e.g. "005930")
+  name        String                      // 종목명
+  market      String                      // "KOSPI" | "KOSDAQ"
+  sector      String?                     // 업종명
+  yahooSymbol String                      // Yahoo Finance 심볼 (e.g. "005930.KS")
+  dartCode    String?                     // DART 고유번호 (재무데이터 수집용)
+
+  snapshots  StockSnapshot[]
+  financials StockFinancial[]
+}
+
+// 스크리너: 일별 주가 스냅샷
+model StockSnapshot {
+  id           String   @id @default(cuid())
+  stockId      String
+  stock        Stock    @relation(fields: [stockId], references: [id])
+  date         DateTime
+  price        Float              // 현재가 (원)
+  high52w      Float              // 52주 최고가
+  low52w       Float              // 52주 최저가
+  changeRate   Float?             // 전일 대비 등락률 (%)
+  marketCap    Float?             // 시가총액 (억원)
+  per          Float?
+  pbr          Float?
+  volume       Float?             // 거래량
+  avgVolume20d Float?             // 20일 평균 거래량
+
+  @@unique([stockId, date])
+  @@index([date])
+}
+
+// 스크리너: 재무 데이터 (DART)
+model StockFinancial {
+  id              String   @id @default(cuid())
+  stockId         String
+  stock           Stock    @relation(fields: [stockId], references: [id])
+  period          String   // "2024A" | "2024Q3" (연간A / 분기Q)
+  revenue         Float?   // 매출액 (억원)
+  operatingProfit Float?   // 영업이익 (억원)
+  netIncome       Float?   // 당기순이익 (억원)
+  revenueGrowth   Float?   // YoY 매출 성장률 (%)
+  opGrowth        Float?   // YoY 영업이익 성장률 (%)
+  netGrowth       Float?   // YoY 순이익 성장률 (%)
+  opMargin        Float?   // 영업이익률 (%)
+
+  @@unique([stockId, period])
+  @@index([stockId])
+}
