@@ -120,9 +120,14 @@ export default function TrackerPage() {
   const totalWeight = holdings.reduce((s, h) => s + h.weight, 0);
   const weightWarning = totalWeight > 100 ? "⚠ 비중 합계가 100%를 초과합니다." : totalWeight < 100 && holdings.length > 0 ? `비중 합계: ${totalWeight.toFixed(1)}% (미배분 ${(100 - totalWeight).toFixed(1)}%)` : "";
 
+  const realReturn = portfolio && benchmarks
+    ? Math.round((portfolio.totalReturn - benchmarks.cpi) * 100) / 100
+    : null;
+
   const chartData = portfolio && benchmarks
     ? [
-        { name: "내 포트폴리오", value: portfolio.totalReturn, color: "#3b82f6" },
+        { name: "내 포트폴리오 (명목)", value: portfolio.totalReturn, color: "#3b82f6" },
+        { name: "실질 수익률", value: realReturn ?? 0, color: "#8b5cf6" },
         { name: "KOSPI", value: benchmarks.kospi, color: "#10b981" },
         { name: "물가상승률(CPI)", value: benchmarks.cpi, color: "#f59e0b" },
       ]
@@ -301,7 +306,18 @@ export default function TrackerPage() {
                     </p>
                   </div>
                 </div>
-                <div className="border-t border-slate-700 pt-3 mt-1 flex justify-between items-center">
+                {realReturn !== null && (
+                  <div className="mt-3 flex items-center gap-3 px-3 py-2 bg-slate-700/40 rounded-xl">
+                    <div className="w-2 h-2 rounded-full bg-violet-400 flex-shrink-0" />
+                    <p className="text-[11px] text-slate-400">
+                      실질 수익률 (물가 차감){" "}
+                      <span className={`font-bold text-sm ${realReturn >= 0 ? "text-violet-300" : "text-red-400"}`}>
+                        {realReturn >= 0 ? "+" : ""}{realReturn.toFixed(2)}%
+                      </span>
+                    </p>
+                  </div>
+                )}
+                <div className="border-t border-slate-700 pt-3 mt-3 flex justify-between items-center">
                   <p className="text-[11px] text-slate-500">
                     투자원금 {(totalInvestment / 10_000).toLocaleString("ko-KR")}만원 기준
                   </p>
@@ -310,15 +326,31 @@ export default function TrackerPage() {
               </div>
             );
           })() : (
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-xl text-center">
-              <p className="text-xs font-semibold text-blue-500 uppercase tracking-wide mb-1">포트폴리오 추정 수익률</p>
-              <p className={`text-3xl font-bold ${portfolio.totalReturn >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                {portfolio.totalReturn >= 0 ? "+" : ""}{portfolio.totalReturn.toFixed(2)}%
-              </p>
+            <div className="mb-6 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 p-5 text-white">
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">포트폴리오 추정 수익률</p>
+              <div className="grid grid-cols-2 gap-4 mb-3">
+                <div>
+                  <p className="text-[11px] text-slate-400 mb-0.5">명목 수익률</p>
+                  <p className={`text-3xl font-bold ${portfolio.totalReturn >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    {portfolio.totalReturn >= 0 ? "+" : ""}{portfolio.totalReturn.toFixed(2)}%
+                  </p>
+                </div>
+                {realReturn !== null && (
+                  <div>
+                    <p className="text-[11px] text-slate-400 mb-0.5">실질 수익률 (물가 차감)</p>
+                    <p className={`text-3xl font-bold ${realReturn >= 0 ? "text-violet-400" : "text-red-400"}`}>
+                      {realReturn >= 0 ? "+" : ""}{realReturn.toFixed(2)}%
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div className="border-t border-slate-700 pt-2">
+                <p className="text-[11px] text-slate-500">명목 {portfolio.totalReturn >= 0 ? "+" : ""}{portfolio.totalReturn.toFixed(2)}% − 물가 {benchmarks!.cpi.toFixed(2)}% = 실질 {realReturn !== null ? (realReturn >= 0 ? "+" : "") + realReturn.toFixed(2) : "-"}%</p>
+              </div>
             </div>
           )}
 
-          <div className="h-48">
+          <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 30, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
