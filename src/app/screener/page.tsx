@@ -475,31 +475,28 @@ export default function ScreenerPage() {
                   </div>
 
                   {/* 재무 지표 */}
-                  <div className="flex flex-col gap-0.5">
-                    {item.revenueGrowth != null || item.opGrowth != null || item.netGrowth != null ? (
-                      <>
-                        <FinBadge label="매출"  value={item.revenueGrowth} isGrowth />
-                        <FinBadge label="영업↑" value={item.opGrowth}      isGrowth />
-                        <FinBadge label="순이익" value={item.netGrowth}    isGrowth />
-                        <FinBadge label="마진"  value={item.opMargin}      isGrowth={false} />
-                      </>
-                    ) : (
-                      <span className="text-[11px] text-gray-300 text-center">-</span>
-                    )}
-                  </div>
+                  {(() => {
+                    const FIN_SECTORS = ["금융", "보험", "은행", "증권"];
+                    const isFinancial = FIN_SECTORS.some(s => item.sector?.includes(s));
+                    return (
+                      <div className="flex flex-col gap-0.5">
+                        <FinBadge label="매출"   value={item.revenueGrowth} isGrowth
+                          nullReason={item.revenue == null
+                            ? (isFinancial ? "금융업 특성" : "데이터없음") : "미산출"} />
+                        <FinBadge label="영업↑"  value={item.opGrowth}      isGrowth nullReason="미산출" />
+                        <FinBadge label="순이익" value={item.netGrowth}     isGrowth nullReason="미산출" />
+                        <FinBadge label="마진"   value={item.opMargin}      isGrowth={false} nullReason="미산출" />
+                      </div>
+                    );
+                  })()}
 
                   {/* 가치지표: PER·EPS·PBR·배당수익률 */}
                   <div className="flex flex-col gap-0.5">
-                    {item.per != null || item.pbr != null || item.dividendYield != null ? (
-                      <>
-                        <ValBadge label="PER"  value={item.per}          unit="x"  low />
-                        <ValBadge label="EPS"  value={item.eps}          unit="원" raw />
-                        <ValBadge label="PBR"  value={item.pbr}          unit="x"  low />
-                        <ValBadge label="배당" value={item.dividendYield} unit="%" />
-                      </>
-                    ) : (
-                      <span className="text-[11px] text-gray-300 text-center">-</span>
-                    )}
+                    <ValBadge label="PER"  value={item.per}          unit="x"  low
+                      nullReason={item.eps == null ? "EPS없음" : item.eps <= 0 ? "적자" : null} />
+                    <ValBadge label="EPS"  value={item.eps}          unit="원" raw nullReason="미산출" />
+                    <ValBadge label="PBR"  value={item.pbr}          unit="x"  low nullReason="주식수미확인" />
+                    <ValBadge label="배당" value={item.dividendYield} unit="%" nullReason="무배당" />
                   </div>
 
                   {/* 네이버 금융 링크 */}
@@ -554,21 +551,27 @@ function FilterInput({ label, value, onChange }: {
 
 // 가치지표 배지: PER·EPS·PBR·배당수익률
 function ValBadge({
-  label, value, unit, low = false, raw = false,
+  label, value, unit, low = false, raw = false, nullReason,
 }: {
-  label: string; value: number | null; unit: string; low?: boolean; raw?: boolean;
+  label: string; value: number | null; unit: string;
+  low?: boolean; raw?: boolean; nullReason?: string | null;
 }) {
-  if (value == null) return null;
+  if (value == null) {
+    return (
+      <div className="flex items-center justify-between gap-1 px-1.5 py-0.5 rounded text-[10px] bg-gray-50/60">
+        <span className="text-gray-300">{label}</span>
+        <span className="text-gray-300 text-[9px] italic">{nullReason ?? "-"}</span>
+      </div>
+    );
+  }
   let display: string;
   if (raw) {
-    // EPS: 원 단위 포맷
     display = value >= 10_000
       ? (value / 10_000).toFixed(0) + "만"
       : value.toLocaleString("ko-KR");
   } else {
     display = value.toFixed(unit === "%" ? 2 : 1);
   }
-  // PER·PBR: 낮을수록 좋음(low=true), 배당: 높을수록 좋음
   const color = raw ? "text-gray-600"
     : low
       ? (value < 10 ? "text-emerald-600" : value < 20 ? "text-blue-500" : "text-gray-500")
@@ -581,18 +584,25 @@ function ValBadge({
   );
 }
 
-function FinBadge({ label, value, isGrowth }: {
-  label: string; value: number | null; isGrowth: boolean;
+function FinBadge({ label, value, isGrowth, nullReason }: {
+  label: string; value: number | null; isGrowth: boolean; nullReason?: string;
 }) {
-  if (value == null) return null;
-  const capped   = isGrowth && value > 999;
-  const display  = capped ? "999%+" : (isGrowth && value > 0 ? "+" : "") + value.toFixed(1) + "%";
-  const color    = isGrowth
+  if (value == null) {
+    return (
+      <div className="flex items-center justify-between gap-1 px-1.5 py-0.5 rounded text-[10px] bg-gray-50/60">
+        <span className="text-gray-300">{label}</span>
+        <span className="text-gray-300 text-[9px] italic">{nullReason ?? "-"}</span>
+      </div>
+    );
+  }
+  const capped  = isGrowth && value > 999;
+  const display = capped ? "999%+" : (isGrowth && value > 0 ? "+" : "") + value.toFixed(1) + "%";
+  const color   = isGrowth
     ? growthColor(capped ? 999 : value)
     : value >= 10 ? "text-emerald-600" : value < 0 ? "text-red-400" : "text-gray-500";
-  const bg       = isGrowth ? growthBg(capped ? 999 : value) : "";
+  const bg      = isGrowth ? growthBg(capped ? 999 : value) : "";
   return (
-    <div className={`flex items-center justify-between gap-1 px-1.5 py-0.5 rounded text-[10px] ${bg}`}>
+    <div className={`flex items-center justify-between gap-1 px-1.5 py-0.5 rounded text-[10px] ${bg || "bg-gray-50/60"}`}>
       <span className="text-gray-400">{label}</span>
       <span className={`font-bold ${color}`}>{display}</span>
     </div>

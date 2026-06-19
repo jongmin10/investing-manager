@@ -3,9 +3,10 @@ import { prisma } from "./prisma";
 const DART_BASE  = "https://opendart.fss.or.kr/api";
 const CALL_DELAY = 700;
 
-const REVENUE_KEYWORDS    = ["매출액", "수익(매출액)", "영업수익", "매출"];
-const OP_PROFIT_KEYWORDS  = ["영업이익"];
-const NET_INCOME_KEYWORDS = ["당기순이익"];
+const REVENUE_KEYWORDS          = ["매출액", "수익(매출액)", "영업수익", "매출"];
+const REVENUE_FINANCIAL_KEYWORDS = ["이자수익"];   // 금융·보험사 폴백
+const OP_PROFIT_KEYWORDS         = ["영업이익"];
+const NET_INCOME_KEYWORDS        = ["당기순이익"];
 
 interface DartItem {
   sj_div:        string;
@@ -100,7 +101,10 @@ async function fetchShares(dartCode: string, year: number): Promise<number | nul
     if (!res.ok) return null;
     const d: { status: string; list?: ShareItem[] } = await res.json();
     if (d.status !== "000") return null;
-    const row = (d.list ?? []).find((r) => r.se === "보통주");
+    // "보통주" 또는 "의결권 있는 주식" (셀트리온 등 일부 기업)
+    const row = (d.list ?? []).find((r) =>
+      r.se === "보통주" || r.se === "의결권 있는 주식"
+    );
     return row ? toWon(row.istc_totqy) : null;
   } catch { return null; }
 }
@@ -132,7 +136,9 @@ export async function collectAllFinancials(): Promise<CollectFinancialsResult> {
     if (items.length === 0) { failed.push(stock.id); await sleep(300); continue; }
 
     // ── 손익계산서 ────────────────────────────────────────
-    const revRow  = findAccount(items, REVENUE_KEYWORDS);
+    // 금융·보험사는 "매출액" 대신 "이자수익"으로 폴백
+    const revRow  = findAccount(items, REVENUE_KEYWORDS)
+                 ?? findAccount(items, REVENUE_FINANCIAL_KEYWORDS);
     const opRow   = findAccount(items, OP_PROFIT_KEYWORDS);
     const netRow  = findAccount(items, NET_INCOME_KEYWORDS);
 
