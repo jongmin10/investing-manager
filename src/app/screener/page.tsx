@@ -538,13 +538,16 @@ function FinBadge({ label, value, isGrowth }: {
   label: string; value: number | null; isGrowth: boolean;
 }) {
   if (value == null) return null;
-  const sign = isGrowth && value > 0 ? "+" : "";
-  const color = isGrowth ? growthColor(value) : value >= 10 ? "text-emerald-600" : "text-gray-500";
-  const bg    = isGrowth ? growthBg(value) : "";
+  const capped   = isGrowth && value > 999;
+  const display  = capped ? "999%+" : (isGrowth && value > 0 ? "+" : "") + value.toFixed(1) + "%";
+  const color    = isGrowth
+    ? growthColor(capped ? 999 : value)
+    : value >= 10 ? "text-emerald-600" : value < 0 ? "text-red-400" : "text-gray-500";
+  const bg       = isGrowth ? growthBg(capped ? 999 : value) : "";
   return (
     <div className={`flex items-center justify-between gap-1 px-1.5 py-0.5 rounded text-[10px] ${bg}`}>
       <span className="text-gray-400">{label}</span>
-      <span className={`font-bold ${color}`}>{sign}{value.toFixed(1)}%</span>
+      <span className={`font-bold ${color}`}>{display}</span>
     </div>
   );
 }

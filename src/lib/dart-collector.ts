@@ -37,8 +37,12 @@ function toEokwon(str: string): number | null {
   return isNaN(n) ? null : parseFloat((n / 100_000_000).toFixed(1));
 }
 
+// |prev| < 50억이면 기준이 너무 작아 성장률이 의미 없음 → null 반환
+const GROWTH_BASE_MIN = 50;
+
 function growth(cur: number | null, prev: number | null): number | null {
   if (cur == null || prev == null || prev === 0) return null;
+  if (Math.abs(prev) < GROWTH_BASE_MIN) return null;
   return parseFloat(((cur - prev) / Math.abs(prev) * 100).toFixed(1));
 }
 

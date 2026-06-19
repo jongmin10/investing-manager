@@ -109,7 +109,7 @@ const STOCKS = [
   { id: "240810", name: "원익IPS",         market: "KOSDAQ", sector: "반도체장비",   yahooSymbol: "240810.KQ" },
   { id: "096530", name: "씨젠",            market: "KOSDAQ", sector: "진단",         yahooSymbol: "096530.KQ" },
   { id: "950130", name: "엑세스바이오",    market: "KOSDAQ", sector: "진단",         yahooSymbol: "950130.KQ" },
-  { id: "200130", name: "카카오페이",      market: "KOSDAQ", sector: "핀테크",       yahooSymbol: "377300.KS" },
+  { id: "377300", name: "카카오페이",      market: "KOSPI",  sector: "핀테크",       yahooSymbol: "377300.KS" },
   { id: "403870", name: "HPSP",            market: "KOSDAQ", sector: "반도체장비",   yahooSymbol: "403870.KQ" },
   { id: "078340", name: "컴투스",          market: "KOSDAQ", sector: "게임",         yahooSymbol: "078340.KQ" },
   { id: "950210", name: "프레스티지바이오파마", market: "KOSDAQ", sector: "바이오",  yahooSymbol: "950210.KQ" },
