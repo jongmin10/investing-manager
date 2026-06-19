@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { href: "/portfolio",   icon: "💼", label: "포트폴리오" },
   { href: "/tracker",     icon: "📈", label: "수익률 트래커" },
   { href: "/calculator",  icon: "🧮", label: "복리 계산기" },
+  { href: "/screener",    icon: "🔍", label: "종목 스크리너" },
   { href: "/glossary",    icon: "📖", label: "용어사전" },
   { href: "/calendar",    icon: "📅", label: "경제 캘린더" },
   { href: "/alerts",      icon: "🔔", label: "알림 설정" },

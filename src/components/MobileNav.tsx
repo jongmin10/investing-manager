@@ -8,7 +8,7 @@ const TABS = [
   { href: "/portfolio",  icon: "💼", label: "포트폴리오" },
   { href: "/tracker",    icon: "📈", label: "수익률" },
   { href: "/calculator", icon: "🧮", label: "계산기" },
-  { href: "/alerts",     icon: "🔔", label: "알림" },
+  { href: "/screener",   icon: "🔍", label: "스크리너" },
 ];
 
 export default function MobileNav() {
