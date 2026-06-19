@@ -22,13 +22,23 @@ interface ScreenerResult {
   isUpToDate: boolean;
 }
 
-type SortKey = "high52wRatio" | "changeRate" | "price" | "revenueGrowth" | "opGrowth";
-type Market  = "ALL" | "KOSPI" | "KOSDAQ";
+type SortKey = "high52wRatio" | "changeRate" | "price" | "volume" | "revenueGrowth" | "opGrowth" | "netGrowth" | "revenue";
+type Market   = "ALL" | "KOSPI" | "KOSDAQ";
+type RatePreset = "" | "up" | "down" | "surge" | "plunge" | "custom";
 
 const MARKET_OPTIONS: { key: Market; label: string }[] = [
   { key: "ALL",    label: "전체"   },
   { key: "KOSPI",  label: "코스피" },
   { key: "KOSDAQ", label: "코스닥" },
+];
+
+const RATE_PRESETS: { key: RatePreset; label: string; min: string; max: string }[] = [
+  { key: "",       label: "전체",     min: "",   max: ""   },
+  { key: "up",     label: "상승",     min: "0",  max: ""   },
+  { key: "down",   label: "하락",     min: "",   max: "0"  },
+  { key: "surge",  label: "급등 3%+", min: "3",  max: ""   },
+  { key: "plunge", label: "급락 3%-", min: "",   max: "-3" },
+  { key: "custom", label: "직접 입력", min: "",  max: ""   },
 ];
 
 function fmtPrice(v: number) {
@@ -41,6 +51,11 @@ function fmtVolume(v: number | null) {
   if (v >= 1_000_000) return (v / 1_000_000).toFixed(1) + "M";
   if (v >= 1_000)     return (v / 1_000).toFixed(0) + "K";
   return v.toString();
+}
+function fmtRevenue(v: number | null) {
+  if (v == null) return null;
+  if (v >= 10_000) return (v / 10_000).toFixed(0) + "조";
+  return v.toLocaleString("ko-KR", { maximumFractionDigits: 0 }) + "억";
 }
 function fmtTime(iso: string | null) {
   if (!iso) return "-";
@@ -59,43 +74,67 @@ function growthBg(v: number | null) {
 }
 
 export default function ScreenerPage() {
-  const [result,     setResult]     = useState<ScreenerResult | null>(null);
-  const [loading,    setLoading]    = useState(true);
-  const [collecting, setCollecting] = useState(false);
+  const [result,              setResult]              = useState<ScreenerResult | null>(null);
+  const [loading,             setLoading]             = useState(true);
+  const [collecting,          setCollecting]          = useState(false);
   const [financialCollecting, setFinancialCollecting] = useState(false);
 
-  // ── 필터 ─────────────────────────────────────────────
+  // ── 필터 상태 ─────────────────────────────────────────
   const [market,           setMarket]           = useState<Market>("ALL");
   const [sector,           setSector]           = useState("");
   const [use52w,           setUse52w]           = useState(false);
   const [high52wMin,       setHigh52wMin]       = useState(80);
+  const [ratePreset,       setRatePreset]       = useState<RatePreset>("");
   const [changeRateMin,    setChangeRateMin]    = useState("");
   const [changeRateMax,    setChangeRateMax]    = useState("");
+  const [volumeMin,        setVolumeMin]        = useState("");        // A: 거래량 최소
+  const [profitableOnly,   setProfitableOnly]   = useState(false);    // A: 흑자 토글
+  const [revenueMin,       setRevenueMin]       = useState("");        // A: 매출 규모 최소
   const [revenueGrowthMin, setRevenueGrowthMin] = useState("");
   const [opGrowthMin,      setOpGrowthMin]      = useState("");
+  const [netGrowthMin,     setNetGrowthMin]     = useState("");        // A: 순이익 성장률
   const [opMarginMin,      setOpMarginMin]      = useState("");
   const [sortBy,           setSortBy]           = useState<SortKey>("high52wRatio");
 
-  const hasFinancialFilter = revenueGrowthMin || opGrowthMin || opMarginMin;
+  // 등락률 프리셋 선택 시 min/max 자동 설정
+  function handleRatePreset(key: RatePreset) {
+    setRatePreset(key);
+    const preset = RATE_PRESETS.find((p) => p.key === key);
+    if (preset && key !== "custom") {
+      setChangeRateMin(preset.min);
+      setChangeRateMax(preset.max);
+    }
+  }
+
+  const hasFinancialFilter = revenueGrowthMin || opGrowthMin || netGrowthMin || opMarginMin || profitableOnly || revenueMin;
+  const hasAnyFilter = sector || use52w || ratePreset !== "" || volumeMin ||
+    revenueGrowthMin || opGrowthMin || netGrowthMin || opMarginMin ||
+    profitableOnly || revenueMin || market !== "ALL";
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams();
-    params.set("market", market);
-    if (sector)                          params.set("sector", sector);
-    if (use52w && high52wMin > 0)        params.set("high52wMin", String(high52wMin));
-    if (changeRateMin)                   params.set("changeRateMin", changeRateMin);
-    if (changeRateMax)                   params.set("changeRateMax", changeRateMax);
-    if (revenueGrowthMin)                params.set("revenueGrowthMin", revenueGrowthMin);
-    if (opGrowthMin)                     params.set("opGrowthMin", opGrowthMin);
-    if (opMarginMin)                     params.set("opMarginMin", opMarginMin);
-    params.set("sortBy", sortBy);
+    const p = new URLSearchParams();
+    p.set("market", market);
+    if (sector)                     p.set("sector", sector);
+    if (use52w && high52wMin > 0)   p.set("high52wMin", String(high52wMin));
+    if (changeRateMin)              p.set("changeRateMin", changeRateMin);
+    if (changeRateMax)              p.set("changeRateMax", changeRateMax);
+    if (volumeMin)                  p.set("volumeMin", volumeMin);
+    if (profitableOnly)             p.set("profitableOnly", "true");
+    if (revenueMin)                 p.set("revenueMin", revenueMin);
+    if (revenueGrowthMin)           p.set("revenueGrowthMin", revenueGrowthMin);
+    if (opGrowthMin)                p.set("opGrowthMin", opGrowthMin);
+    if (netGrowthMin)               p.set("netGrowthMin", netGrowthMin);
+    if (opMarginMin)                p.set("opMarginMin", opMarginMin);
+    p.set("sortBy", sortBy);
 
-    const res  = await fetch(`/api/screener?${params}`);
+    const res  = await fetch(`/api/screener?${p}`);
     const data = await res.json();
     setResult(data);
     setLoading(false);
-  }, [market, sector, use52w, high52wMin, changeRateMin, changeRateMax, revenueGrowthMin, opGrowthMin, opMarginMin, sortBy]);
+  }, [market, sector, use52w, high52wMin, changeRateMin, changeRateMax,
+      volumeMin, profitableOnly, revenueMin,
+      revenueGrowthMin, opGrowthMin, netGrowthMin, opMarginMin, sortBy]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -117,14 +156,12 @@ export default function ScreenerPage() {
 
   function resetFilters() {
     setMarket("ALL"); setSector(""); setUse52w(false); setHigh52wMin(80);
-    setChangeRateMin(""); setChangeRateMax("");
-    setRevenueGrowthMin(""); setOpGrowthMin(""); setOpMarginMin("");
+    setRatePreset(""); setChangeRateMin(""); setChangeRateMax("");
+    setVolumeMin(""); setProfitableOnly(false); setRevenueMin("");
+    setRevenueGrowthMin(""); setOpGrowthMin(""); setNetGrowthMin(""); setOpMarginMin("");
   }
 
-  const hasAnyFilter = sector || use52w || changeRateMin || changeRateMax ||
-    revenueGrowthMin || opGrowthMin || opMarginMin || market !== "ALL";
-
-  const fin = result?.financialStatus;
+  const fin     = result?.financialStatus;
   const sectors = result?.sectors ?? [];
 
   return (
@@ -136,39 +173,27 @@ export default function ScreenerPage() {
           <h1 className="text-2xl font-bold text-gray-900">종목 스크리너</h1>
           <p className="text-sm text-gray-400 mt-0.5">코스피·코스닥 종목 중 조건에 맞는 매수 후보를 검색합니다.</p>
         </div>
-
         <div className="flex items-center gap-2 flex-wrap">
-          {/* 주가 수집 상태 + 버튼 */}
-          <div className="flex items-center gap-2">
-            {result && (
-              <span className={`text-xs px-2.5 py-1 rounded-full border ${
-                result.isUpToDate
-                  ? "bg-emerald-50 border-emerald-100 text-emerald-600"
-                  : "bg-amber-50 border-amber-100 text-amber-600"
-              }`}>
-                {result.isUpToDate ? "✓ 오늘 수집" : `마지막 ${fmtTime(result.collectedAt)}`}
-              </span>
-            )}
-            <button
-              onClick={handleCollect} disabled={collecting}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white text-xs font-medium rounded-xl transition-colors"
-            >
-              {collecting
-                ? <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />수집 중...</>
-                : "↻ 주가 수집"}
-            </button>
-          </div>
-
-          {/* 재무 수집 버튼 */}
-          <button
-            onClick={handleFinancialCollect} disabled={financialCollecting}
+          {result && (
+            <span className={`text-xs px-2.5 py-1 rounded-full border ${
+              result.isUpToDate
+                ? "bg-emerald-50 border-emerald-100 text-emerald-600"
+                : "bg-amber-50 border-amber-100 text-amber-600"
+            }`}>
+              {result.isUpToDate ? "✓ 오늘 수집" : `마지막 ${fmtTime(result.collectedAt)}`}
+            </span>
+          )}
+          <button onClick={handleCollect} disabled={collecting}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white text-xs font-medium rounded-xl transition-colors">
+            {collecting
+              ? <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />수집 중...</>
+              : "↻ 주가 수집"}
+          </button>
+          <button onClick={handleFinancialCollect} disabled={financialCollecting}
             title={fin?.hasDartKey ? "DART 재무 데이터 수집" : "DART_API_KEY 설정 필요"}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border transition-colors disabled:opacity-50 ${
-              fin?.hasDartKey
-                ? "border-violet-200 text-violet-600 hover:bg-violet-50"
-                : "border-gray-200 text-gray-400 cursor-not-allowed"
-            }`}
-          >
+              fin?.hasDartKey ? "border-violet-200 text-violet-600 hover:bg-violet-50" : "border-gray-200 text-gray-400 cursor-not-allowed"
+            }`}>
             {financialCollecting
               ? <><span className="w-3 h-3 border-2 border-violet-300/40 border-t-violet-500 rounded-full animate-spin" />수집 중...</>
               : <>📋 재무 수집 {fin ? `(${fin.count}개)` : ""}</>}
@@ -176,23 +201,10 @@ export default function ScreenerPage() {
         </div>
       </div>
 
-      {/* DART 키 미설정 안내 */}
-      {fin && !fin.hasDartKey && (
-        <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3 text-xs text-violet-800">
-          <p className="font-semibold mb-1">재무 데이터(매출·이익 성장률) 사용 방법</p>
-          <ol className="list-decimal list-inside space-y-0.5 text-violet-700">
-            <li>DART OpenAPI 키 발급: <span className="font-mono">opendart.fss.or.kr</span></li>
-            <li><span className="font-mono">.env</span>에 <span className="font-mono">DART_API_KEY=발급받은키</span> 추가 후 서버 재시작</li>
-            <li>터미널: <span className="font-mono">node scripts/fetch-dart-corp-codes.mjs</span> 실행</li>
-            <li>위 "📋 재무 수집" 버튼 클릭</li>
-          </ol>
-        </div>
-      )}
-
       {/* ── 필터 패널 ── */}
       <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
 
-        {/* 행 1: 시장·업종·정렬 */}
+        {/* 행 1: 시장 · 업종 · 정렬 */}
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
             <span className="text-xs font-medium text-gray-500">시장</span>
@@ -205,7 +217,6 @@ export default function ScreenerPage() {
               ))}
             </div>
           </div>
-
           <div className="flex items-center gap-2">
             <span className="text-xs font-medium text-gray-500">업종</span>
             <select value={sector} onChange={(e) => setSector(e.target.value)}
@@ -214,7 +225,6 @@ export default function ScreenerPage() {
               {sectors.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
-
           <div className="flex items-center gap-2 ml-auto">
             <span className="text-xs font-medium text-gray-500">정렬</span>
             <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortKey)}
@@ -222,71 +232,127 @@ export default function ScreenerPage() {
               <option value="high52wRatio">52주 고가 근접도</option>
               <option value="changeRate">등락률 높은순</option>
               <option value="price">현재가 높은순</option>
+              <option value="volume">거래량 높은순</option>
+              <option value="revenue">매출 규모 높은순</option>
               <option value="revenueGrowth">매출 성장률 높은순</option>
               <option value="opGrowth">영업이익 성장률 높은순</option>
+              <option value="netGrowth">순이익 성장률 높은순</option>
             </select>
           </div>
         </div>
 
         {/* 행 2: 가격 조건 */}
-        <div className="flex flex-wrap items-center gap-5 pt-3 border-t border-gray-100">
-          <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-full -mb-2">가격 조건</span>
-
-          <div className="flex items-center gap-3">
-            <div onClick={() => setUse52w((v) => !v)}
-              className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${use52w ? "bg-blue-500" : "bg-gray-200"}`}>
-              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${use52w ? "translate-x-4" : "translate-x-0.5"}`} />
-            </div>
-            <label className="text-xs font-medium text-gray-700 cursor-pointer" onClick={() => setUse52w((v) => !v)}>
-              52주 신고가
-            </label>
-            {use52w && (
-              <div className="flex items-center gap-2">
-                <input type="range" min={50} max={100} step={1} value={high52wMin}
-                  onChange={(e) => setHigh52wMin(Number(e.target.value))}
-                  className="w-24 accent-blue-500" />
-                <span className="text-sm font-bold text-blue-600 w-16">{high52wMin}% 이상</span>
+        <div className="space-y-3 pt-3 border-t border-gray-100">
+          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">가격 조건</p>
+          <div className="flex flex-wrap items-center gap-5">
+            {/* 52주 신고가 */}
+            <div className="flex items-center gap-3">
+              <div onClick={() => setUse52w((v) => !v)}
+                className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${use52w ? "bg-blue-500" : "bg-gray-200"}`}>
+                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${use52w ? "translate-x-4" : "translate-x-0.5"}`} />
               </div>
-            )}
+              <span className="text-xs font-medium text-gray-700 cursor-pointer" onClick={() => setUse52w((v) => !v)}>52주 신고가</span>
+              {use52w && (
+                <div className="flex items-center gap-2">
+                  <input type="range" min={50} max={100} step={1} value={high52wMin}
+                    onChange={(e) => setHigh52wMin(Number(e.target.value))}
+                    className="w-24 accent-blue-500" />
+                  <span className="text-sm font-bold text-blue-600 w-16">{high52wMin}% 이상</span>
+                </div>
+              )}
+            </div>
+
+            {/* 등락률 퀵 버튼 (A: 개선) */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-gray-500">등락률</span>
+              <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+                {RATE_PRESETS.map(({ key, label }) => (
+                  <button key={key} onClick={() => handleRatePreset(key)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                      ratePreset === key ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                    }`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {ratePreset === "custom" && (
+                <div className="flex items-center gap-1">
+                  <NumInput value={changeRateMin} onChange={setChangeRateMin} placeholder="-10" width="w-16" />
+                  <span className="text-xs text-gray-400">~</span>
+                  <NumInput value={changeRateMax} onChange={setChangeRateMax} placeholder="+10" width="w-16" />
+                  <span className="text-xs text-gray-400">%</span>
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500">등락률</span>
-            <NumInput value={changeRateMin} onChange={setChangeRateMin} placeholder="-10" />
-            <span className="text-xs text-gray-400">~</span>
-            <NumInput value={changeRateMax} onChange={setChangeRateMax} placeholder="+10" />
-            <span className="text-xs text-gray-400">%</span>
+          {/* 거래량 최소 (A: 신규) */}
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-medium text-gray-500">거래량 최소</span>
+            <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+              {[
+                { label: "제한 없음", val: "" },
+                { label: "1만주+",   val: "10000" },
+                { label: "10만주+",  val: "100000" },
+                { label: "100만주+", val: "1000000" },
+              ].map(({ label, val }) => (
+                <button key={val} onClick={() => setVolumeMin(val)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                    volumeMin === val ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                  }`}>
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
         {/* 행 3: 재무 조건 */}
-        <div className="flex flex-wrap items-center gap-5 pt-3 border-t border-gray-100">
-          <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-full -mb-2">
-            재무 조건
-            {fin && fin.count === 0 && (
-              <span className="ml-2 text-amber-400 font-normal normal-case">재무 데이터 없음 — "📋 재무 수집" 버튼을 눌러주세요</span>
-            )}
+        <div className="space-y-3 pt-3 border-t border-gray-100">
+          <div className="flex items-center gap-3">
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">재무 조건</p>
             {fin && fin.count > 0 && (
-              <span className="ml-2 text-gray-400 font-normal normal-case">{fin.count}개 종목 재무 데이터 보유</span>
+              <span className="text-[11px] text-gray-400">{fin.count}개 종목 재무 데이터 보유</span>
             )}
-          </span>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 whitespace-nowrap">매출 성장률</span>
-            <NumInput value={revenueGrowthMin} onChange={setRevenueGrowthMin} placeholder="10" />
-            <span className="text-xs text-gray-400">% 이상</span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 whitespace-nowrap">영업이익 성장률</span>
-            <NumInput value={opGrowthMin} onChange={setOpGrowthMin} placeholder="10" />
-            <span className="text-xs text-gray-400">% 이상</span>
+          <div className="flex flex-wrap items-center gap-4">
+            {/* 영업이익 흑자 토글 (A: 신규) */}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <div onClick={() => setProfitableOnly((v) => !v)}
+                className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${profitableOnly ? "bg-emerald-500" : "bg-gray-200"}`}>
+                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${profitableOnly ? "translate-x-4" : "translate-x-0.5"}`} />
+              </div>
+              <span className="text-xs font-medium text-gray-700">영업이익 흑자만</span>
+            </label>
+
+            {/* 매출 규모 (A: 신규) */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 whitespace-nowrap">매출 규모</span>
+              <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+                {[
+                  { label: "제한 없음", val: "" },
+                  { label: "1천억+",   val: "1000" },
+                  { label: "1조+",     val: "10000" },
+                  { label: "10조+",    val: "100000" },
+                ].map(({ label, val }) => (
+                  <button key={val} onClick={() => setRevenueMin(val)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                      revenueMin === val ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                    }`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 whitespace-nowrap">영업이익률</span>
-            <NumInput value={opMarginMin} onChange={setOpMarginMin} placeholder="5" />
-            <span className="text-xs text-gray-400">% 이상</span>
+          {/* 성장률 입력 */}
+          <div className="flex flex-wrap items-center gap-4">
+            <FilterInput label="매출 성장" value={revenueGrowthMin} onChange={setRevenueGrowthMin} />
+            <FilterInput label="영업이익 성장" value={opGrowthMin} onChange={setOpGrowthMin} />
+            <FilterInput label="순이익 성장" value={netGrowthMin} onChange={setNetGrowthMin} />  {/* A: 신규 */}
+            <FilterInput label="영업이익률" value={opMarginMin} onChange={setOpMarginMin} />
           </div>
         </div>
 
@@ -299,7 +365,6 @@ export default function ScreenerPage() {
 
       {/* ── 결과 테이블 ── */}
       <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-        {/* 요약 헤더 */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
           <p className="text-sm font-semibold text-gray-800">
             {loading ? "검색 중..." : `${result?.total ?? 0}개 종목`}
@@ -315,7 +380,7 @@ export default function ScreenerPage() {
         </div>
 
         {/* 컬럼 헤더 */}
-        <div className="grid grid-cols-[2fr_1fr_1fr_1.8fr_1.5fr_auto] gap-x-3 px-5 py-2 bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+        <div className="grid grid-cols-[2fr_1fr_1fr_1.8fr_1.8fr_auto] gap-x-3 px-5 py-2 bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
           <span>종목</span>
           <span className="text-right">현재가</span>
           <span className="text-right">등락률</span>
@@ -324,11 +389,11 @@ export default function ScreenerPage() {
           <span className="w-8" />
         </div>
 
-        {/* 로딩 스켈레톤 */}
+        {/* 로딩 */}
         {loading && (
           <div className="divide-y divide-gray-50">
             {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="grid grid-cols-[2fr_1fr_1fr_1.8fr_1.5fr_auto] gap-x-3 px-5 py-3.5 animate-pulse">
+              <div key={i} className="grid grid-cols-[2fr_1fr_1fr_1.8fr_1.8fr_auto] gap-x-3 px-5 py-3.5 animate-pulse">
                 <div className="h-4 bg-gray-100 rounded w-3/4" />
                 <div className="h-4 bg-gray-100 rounded" />
                 <div className="h-4 bg-gray-100 rounded w-3/4 ml-auto" />
@@ -352,8 +417,8 @@ export default function ScreenerPage() {
         {!loading && result && result.items.length > 0 && (
           <div className="divide-y divide-gray-50">
             {result.items.map((item) => {
-              const isPos  = (item.changeRate ?? 0) >= 0;
-              const ratio  = item.high52wRatio;
+              const isPos = (item.changeRate ?? 0) >= 0;
+              const ratio = item.high52wRatio;
               const ratioColor =
                 ratio >= 95 ? "#059669" : ratio >= 85 ? "#16a34a" : ratio >= 70 ? "#2563eb" : "#6b7280";
               const ratioBg =
@@ -361,7 +426,7 @@ export default function ScreenerPage() {
 
               return (
                 <div key={item.id}
-                  className="grid grid-cols-[2fr_1fr_1fr_1.8fr_1.5fr_auto] gap-x-3 px-5 py-3.5 hover:bg-gray-50/70 transition-colors items-center">
+                  className="grid grid-cols-[2fr_1fr_1fr_1.8fr_1.8fr_auto] gap-x-3 px-5 py-3.5 hover:bg-gray-50/70 transition-colors items-center">
 
                   {/* 종목명 */}
                   <div className="min-w-0">
@@ -373,13 +438,16 @@ export default function ScreenerPage() {
                     </div>
                     <p className="text-[11px] text-gray-400 mt-0.5 truncate">
                       {item.sector} · {item.id}
-                      {item.period && <span className="ml-1 text-gray-300">· {item.period}</span>}
+                      {item.revenue && <span className="ml-1 text-gray-300">· {fmtRevenue(item.revenue)}</span>}
                     </p>
                   </div>
 
                   {/* 현재가 */}
                   <div className="text-right">
                     <p className="text-sm font-semibold text-gray-800">{fmtPrice(item.price)}</p>
+                    {item.volume != null && (
+                      <p className="text-[11px] text-gray-400 mt-0.5">{fmtVolume(item.volume)}</p>
+                    )}
                   </div>
 
                   {/* 등락률 */}
@@ -393,9 +461,7 @@ export default function ScreenerPage() {
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-bold px-2 py-0.5 rounded-full"
-                        style={{ color: ratioColor, background: ratioBg }}>
-                        {ratio}%
-                      </span>
+                        style={{ color: ratioColor, background: ratioBg }}>{ratio}%</span>
                       <span className="text-[11px] text-gray-400">고 {fmtPrice(item.high52w)}</span>
                     </div>
                     <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
@@ -405,15 +471,16 @@ export default function ScreenerPage() {
                   </div>
 
                   {/* 재무 지표 */}
-                  <div className="flex flex-col gap-1">
-                    {item.revenueGrowth != null || item.opGrowth != null || item.opMargin != null ? (
+                  <div className="flex flex-col gap-0.5">
+                    {item.revenueGrowth != null || item.opGrowth != null || item.netGrowth != null ? (
                       <>
-                        <FinBadge label="매출" value={item.revenueGrowth} suffix="%" isGrowth />
-                        <FinBadge label="영업↑" value={item.opGrowth} suffix="%" isGrowth />
-                        <FinBadge label="마진" value={item.opMargin} suffix="%" isGrowth={false} />
+                        <FinBadge label="매출"  value={item.revenueGrowth} isGrowth />
+                        <FinBadge label="영업↑" value={item.opGrowth}      isGrowth />
+                        <FinBadge label="순이익" value={item.netGrowth}    isGrowth />
+                        <FinBadge label="마진"  value={item.opMargin}      isGrowth={false} />
                       </>
                     ) : (
-                      <span className="text-[11px] text-gray-300">-</span>
+                      <span className="text-[11px] text-gray-300 text-center">-</span>
                     )}
                   </div>
 
@@ -444,33 +511,40 @@ export default function ScreenerPage() {
 
 // ── 서브 컴포넌트 ─────────────────────────────────────────
 
-function NumInput({
-  value, onChange, placeholder,
-}: {
-  value: string; onChange: (v: string) => void; placeholder: string;
+function NumInput({ value, onChange, placeholder, width = "w-20" }: {
+  value: string; onChange: (v: string) => void; placeholder: string; width?: string;
 }) {
   return (
-    <input
-      type="number" step="any" placeholder={placeholder} value={value}
+    <input type="number" step="any" placeholder={placeholder} value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300"
+      className={`${width} border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300`}
     />
   );
 }
 
-function FinBadge({
-  label, value, suffix, isGrowth,
-}: {
-  label: string; value: number | null; suffix: string; isGrowth: boolean;
+function FilterInput({ label, value, onChange }: {
+  label: string; value: string; onChange: (v: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-xs text-gray-500 whitespace-nowrap">{label}</span>
+      <NumInput value={value} onChange={onChange} placeholder="0" width="w-16" />
+      <span className="text-xs text-gray-400">% 이상</span>
+    </div>
+  );
+}
+
+function FinBadge({ label, value, isGrowth }: {
+  label: string; value: number | null; isGrowth: boolean;
 }) {
   if (value == null) return null;
   const sign = isGrowth && value > 0 ? "+" : "";
+  const color = isGrowth ? growthColor(value) : value >= 10 ? "text-emerald-600" : "text-gray-500";
+  const bg    = isGrowth ? growthBg(value) : "";
   return (
-    <div className={`flex items-center justify-between gap-1 px-1.5 py-0.5 rounded text-[10px] ${growthBg(isGrowth ? value : null)}`}>
+    <div className={`flex items-center justify-between gap-1 px-1.5 py-0.5 rounded text-[10px] ${bg}`}>
       <span className="text-gray-400">{label}</span>
-      <span className={`font-bold ${isGrowth ? growthColor(value) : value >= 10 ? "text-emerald-600" : "text-gray-500"}`}>
-        {sign}{value.toFixed(1)}{suffix}
-      </span>
+      <span className={`font-bold ${color}`}>{sign}{value.toFixed(1)}%</span>
     </div>
   );
 }
