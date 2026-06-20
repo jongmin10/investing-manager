@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { getWatchlist, toggleWatchlistItem } from "@/lib/watchlist";
 
 interface StockItem {
   id: string; name: string; market: string; sector: string | null;
@@ -78,6 +79,13 @@ export default function ScreenerPage() {
   const [loading,             setLoading]             = useState(true);
   const [collecting,          setCollecting]          = useState(false);
   const [financialCollecting, setFinancialCollecting] = useState(false);
+  const [watchlist,           setWatchlist]           = useState<Set<string>>(new Set());
+
+  useEffect(() => { setWatchlist(getWatchlist()); }, []);
+
+  function handleToggleWatchlist(id: string) {
+    setWatchlist(toggleWatchlistItem(id));
+  }
 
   // ── 필터 상태 ─────────────────────────────────────────
   const [market,           setMarket]           = useState<Market>("ALL");
@@ -539,8 +547,15 @@ export default function ScreenerPage() {
                     <ValBadge label="배당수익률" value={item.dividendYield} unit="%" nullReason="무배당" />
                   </div>
 
-                  {/* 네이버 금융 링크 */}
-                  <div className="w-8 flex justify-center">
+                  {/* 관심종목 + 네이버 링크 */}
+                  <div className="flex items-center gap-1.5 justify-center">
+                    <button onClick={() => handleToggleWatchlist(item.id)}
+                      title={watchlist.has(item.id) ? "관심종목 해제" : "관심종목 추가"}
+                      className="transition-colors">
+                      {watchlist.has(item.id)
+                        ? <span className="text-amber-400 text-base leading-none">★</span>
+                        : <span className="text-gray-200 hover:text-amber-300 text-base leading-none">☆</span>}
+                    </button>
                     <a href={`https://finance.naver.com/item/main.naver?code=${item.id}`}
                       target="_blank" rel="noopener noreferrer"
                       className="text-gray-300 hover:text-blue-400 transition-colors" title="네이버 금융">

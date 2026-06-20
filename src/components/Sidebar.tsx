@@ -4,15 +4,24 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 
-const NAV_ITEMS = [
-  { href: "/",            icon: "📊", label: "대시보드" },
-  { href: "/portfolio",   icon: "💼", label: "포트폴리오" },
-  { href: "/tracker",     icon: "📈", label: "수익률 트래커" },
-  { href: "/calculator",  icon: "🧮", label: "복리 계산기" },
-  { href: "/screener",    icon: "🔍", label: "종목 스크리너" },
-  { href: "/glossary",    icon: "📖", label: "용어사전" },
-  { href: "/calendar",    icon: "📅", label: "경제 캘린더" },
-  { href: "/alerts",      icon: "🔔", label: "알림 설정" },
+type NavItem = {
+  href: string; icon: string; label: string;
+  children?: { href: string; icon: string; label: string }[];
+};
+
+const NAV_ITEMS: NavItem[] = [
+  { href: "/",           icon: "📊", label: "대시보드" },
+  { href: "/portfolio",  icon: "💼", label: "포트폴리오" },
+  { href: "/tracker",    icon: "📈", label: "수익률 트래커" },
+  { href: "/calculator", icon: "🧮", label: "복리 계산기" },
+  { href: "/screener",   icon: "🔍", label: "종목 스크리너",
+    children: [
+      { href: "/screener/watchlist", icon: "★", label: "관심종목" },
+    ],
+  },
+  { href: "/glossary",   icon: "📖", label: "용어사전" },
+  { href: "/calendar",   icon: "📅", label: "경제 캘린더" },
+  { href: "/alerts",     icon: "🔔", label: "알림 설정" },
 ];
 
 export default function Sidebar() {
@@ -39,25 +48,48 @@ export default function Sidebar() {
 
       {/* 네비게이션 */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {NAV_ITEMS.map(({ href, icon, label }) => {
-          const isActive =
-            href === "/" ? pathname === "/" : pathname.startsWith(href);
+        {NAV_ITEMS.map(({ href, icon, label, children }) => {
+          const isActive = href === "/" ? pathname === "/" : pathname === href;
+          const isParentActive = children ? pathname.startsWith(href) : false;
           return (
-            <Link
-              key={href}
-              href={href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150 ${
-                isActive
-                  ? "bg-blue-500/20 text-blue-300 font-semibold"
-                  : "text-slate-400 hover:bg-slate-800/80 hover:text-slate-200"
-              }`}
-            >
-              <span className="text-base leading-none">{icon}</span>
-              <span className="flex-1 truncate">{label}</span>
-              {isActive && (
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+            <div key={href}>
+              <Link
+                href={href}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150 ${
+                  isActive || (isParentActive && !children?.some(c => pathname === c.href))
+                    ? "bg-blue-500/20 text-blue-300 font-semibold"
+                    : "text-slate-400 hover:bg-slate-800/80 hover:text-slate-200"
+                }`}
+              >
+                <span className="text-base leading-none">{icon}</span>
+                <span className="flex-1 truncate">{label}</span>
+                {(isActive || isParentActive) && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+                )}
+              </Link>
+              {/* 하위 메뉴 — 부모가 활성일 때 표시 */}
+              {children && isParentActive && (
+                <div className="ml-4 mt-0.5 space-y-0.5">
+                  {children.map((child) => {
+                    const isChildActive = pathname === child.href;
+                    return (
+                      <Link key={child.href} href={child.href}
+                        className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs transition-all duration-150 ${
+                          isChildActive
+                            ? "bg-amber-400/15 text-amber-300 font-semibold"
+                            : "text-slate-500 hover:bg-slate-800/60 hover:text-slate-300"
+                        }`}>
+                        <span className="text-sm leading-none">{child.icon}</span>
+                        <span className="flex-1 truncate">{child.label}</span>
+                        {isChildActive && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
               )}
-            </Link>
+            </div>
           );
         })}
       </nav>
