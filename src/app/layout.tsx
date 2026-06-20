@@ -6,8 +6,8 @@ import Sidebar from "@/components/Sidebar";
 import MobileNav from "@/components/MobileNav";
 
 export const metadata: Metadata = {
-  title: "퇴직연금 경제지표 대시보드",
-  description: "DC/IRP 퇴직연금 관리를 위한 핵심 경제지표 모니터링 서비스",
+  title: "연금 나침반",
+  description: "DC/IRP 퇴직연금 관리를 위한 경제지표·종목 스크리너·투자 대가 포트폴리오 서비스",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

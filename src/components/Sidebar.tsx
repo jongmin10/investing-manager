@@ -30,20 +30,29 @@ export default function Sidebar() {
   const { data: session, status } = useSession();
 
   return (
-    <aside className="fixed left-0 top-0 h-full w-56 bg-slate-900 flex flex-col z-20 border-r border-slate-700/40">
+    <aside className="fixed left-0 top-0 h-full w-56 bg-blue-50 flex flex-col z-20 border-r border-blue-100">
       {/* 로고 */}
-      <div className="px-5 pt-6 pb-5 border-b border-slate-700/50">
+      <div className="px-5 pt-6 pb-5 border-b border-blue-100">
         <Link href="/" className="block group">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
-              R
+            <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center flex-shrink-0">
+              <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none">
+                <circle cx="12" cy="12" r="9" stroke="white" strokeWidth="1.5"/>
+                <circle cx="12" cy="12" r="1.5" fill="white"/>
+                <polygon points="12,3.5 10.5,12 12,10.5 13.5,12" fill="#fca5a5"/>
+                <polygon points="12,10.5 10.5,12 12,20.5 13.5,12" fill="white" opacity="0.7"/>
+                <line x1="12" y1="3" x2="12" y2="4.5" stroke="white" strokeWidth="1.2"/>
+                <line x1="12" y1="19.5" x2="12" y2="21" stroke="white" strokeWidth="1.2"/>
+                <line x1="3" y1="12" x2="4.5" y2="12" stroke="white" strokeWidth="1.2"/>
+                <line x1="19.5" y1="12" x2="21" y2="12" stroke="white" strokeWidth="1.2"/>
+              </svg>
             </div>
             <div>
-              <p className="text-white font-bold text-sm leading-tight">퇴직연금</p>
-              <p className="text-blue-400 font-bold text-sm leading-tight">대시보드</p>
+              <p className="text-blue-900 font-bold text-sm leading-tight">연금</p>
+              <p className="text-blue-500 font-bold text-sm leading-tight">나침반</p>
             </div>
           </div>
-          <p className="text-slate-500 text-[11px] mt-2 leading-snug">DC/IRP 경제지표 모니터</p>
+          <p className="text-blue-400 text-[11px] mt-2 leading-snug">DC/IRP 퇴직연금 관리 서비스</p>
         </Link>
       </div>
 
@@ -58,17 +67,16 @@ export default function Sidebar() {
                 href={href}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150 ${
                   isActive || (isParentActive && !children?.some(c => pathname === c.href))
-                    ? "bg-blue-500/20 text-blue-300 font-semibold"
-                    : "text-slate-400 hover:bg-slate-800/80 hover:text-slate-200"
+                    ? "bg-blue-500 text-white font-semibold shadow-sm"
+                    : "text-blue-900 hover:bg-blue-100 hover:text-blue-700"
                 }`}
               >
                 <span className="text-base leading-none">{icon}</span>
                 <span className="flex-1 truncate">{label}</span>
                 {(isActive || isParentActive) && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-white/70 flex-shrink-0" />
                 )}
               </Link>
-              {/* 하위 메뉴 — 부모가 활성일 때 표시 */}
               {children && isParentActive && (
                 <div className="ml-4 mt-0.5 space-y-0.5">
                   {children.map((child) => {
@@ -77,13 +85,13 @@ export default function Sidebar() {
                       <Link key={child.href} href={child.href}
                         className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs transition-all duration-150 ${
                           isChildActive
-                            ? "bg-amber-400/15 text-amber-300 font-semibold"
-                            : "text-slate-500 hover:bg-slate-800/60 hover:text-slate-300"
+                            ? "bg-amber-400 text-white font-semibold shadow-sm"
+                            : "text-blue-700 hover:bg-blue-100"
                         }`}>
                         <span className="text-sm leading-none">{child.icon}</span>
                         <span className="flex-1 truncate">{child.label}</span>
                         {isChildActive && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-white/70 flex-shrink-0" />
                         )}
                       </Link>
                     );
@@ -96,22 +104,22 @@ export default function Sidebar() {
       </nav>
 
       {/* 하단 유저 영역 */}
-      <div className="px-4 py-4 border-t border-slate-700/50">
+      <div className="px-4 py-4 border-t border-blue-100">
         {status === "loading" ? (
-          <div className="h-8 bg-slate-800 rounded-lg animate-pulse" />
+          <div className="h-8 bg-blue-100 rounded-lg animate-pulse" />
         ) : session?.user ? (
           <div className="space-y-2">
             <div className="flex items-center gap-2 px-2">
               <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
                 {(session.user.name ?? session.user.email ?? "U")[0].toUpperCase()}
               </div>
-              <span className="text-xs text-slate-300 truncate flex-1">
+              <span className="text-xs text-blue-800 truncate flex-1">
                 {session.user.name ?? session.user.email}
               </span>
             </div>
             <button
               onClick={() => signOut({ callbackUrl: "/" })}
-              className="w-full text-xs text-slate-500 hover:text-slate-300 py-1.5 transition-colors text-left px-2"
+              className="w-full text-xs text-blue-400 hover:text-blue-600 py-1.5 transition-colors text-left px-2"
             >
               로그아웃 →
             </button>
@@ -119,7 +127,7 @@ export default function Sidebar() {
         ) : (
           <Link
             href="/login"
-            className="flex items-center justify-center w-full py-2 rounded-xl bg-blue-500 hover:bg-blue-400 text-white text-sm font-medium transition-colors"
+            className="flex items-center justify-center w-full py-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium transition-colors"
           >
             로그인
           </Link>
