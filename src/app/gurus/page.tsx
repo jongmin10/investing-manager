@@ -39,13 +39,23 @@ export default function GurusPage() {
   async function handleCollectAll() {
     setCollecting(true);
     setStatus({});
-    const res  = await fetch("/api/gurus/collect", { method: "POST", body: JSON.stringify({}), headers: { "Content-Type": "application/json" } });
-    const data = await res.json();
-    const s: Record<string, string> = {};
-    for (const r of data.results ?? []) {
-      s[r.id] = r.ok ? `✓ ${r.quarter} (${r.count}개)` : `✗ ${r.error}`;
+    // Vercel 타임아웃 대응: 대가 1명씩 순차 수집
+    const { ids } = await fetch("/api/gurus/collect", {
+      method: "POST", body: JSON.stringify({}), headers: { "Content-Type": "application/json" },
+    }).then((r) => r.json());
+
+    for (const id of (ids ?? [])) {
+      setStatus((prev) => ({ ...prev, [id]: "수집 중..." }));
+      try {
+        const res  = await fetch("/api/gurus/collect", {
+          method: "POST", body: JSON.stringify({ id }), headers: { "Content-Type": "application/json" },
+        });
+        const data = await res.json();
+        setStatus((prev) => ({ ...prev, [id]: data.ok ? `✓ ${data.quarter} (${data.count}개)` : `✗ ${data.error ?? "오류"}` }));
+      } catch {
+        setStatus((prev) => ({ ...prev, [id]: "✗ 네트워크 오류" }));
+      }
     }
-    setStatus(s);
     setCollecting(false);
     fetchGurus();
   }
