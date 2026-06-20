@@ -494,7 +494,7 @@ export default function PortfolioPage() {
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                     <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11 }} />
                     <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} width={60} />
-                    <Tooltip formatter={(v: number) => [`${v}%`]} />
+                    <Tooltip formatter={((v: number | undefined) => [`${v ?? 0}%`]) as any} />
                     <Bar dataKey="현재" fill="#cbd5e1" radius={[0, 2, 2, 0]} barSize={10} />
                     <Bar dataKey="목표" radius={[0, 2, 2, 0]} barSize={10}>
                       {rebalChartData.map((entry, i) => <Cell key={i} fill={entry.color} />)}

@@ -298,7 +298,7 @@ export default function CalculatorPage() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis dataKey="year" tick={{ fontSize: 12 }} interval={xInterval(isAccum ? years : targetYears)} />
                     <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => v >= 10_000 ? `${(v / 10_000).toFixed(0)}억` : `${v}만`} width={46} />
-                    <Tooltip formatter={(v: number, name: string) => [`${v.toLocaleString()}만원`, name]} labelStyle={{ fontWeight: 600, fontSize: 12 }} contentStyle={{ fontSize: 12 }} />
+                    <Tooltip formatter={((v: number | undefined, name: string) => [`${(v ?? 0).toLocaleString()}만원`, name]) as any} labelStyle={{ fontWeight: 600, fontSize: 12 }} contentStyle={{ fontSize: 12 }} />
                     <Area type="monotone" dataKey="원금" stackId="1" stroke="#93c5fd" fill="#dbeafe" strokeWidth={1.5} />
                     <Area type="monotone" dataKey="수익" stackId="1" stroke="#34d399" fill="#d1fae5" strokeWidth={1.5} />
                   </AreaChart>
@@ -485,7 +485,7 @@ export default function CalculatorPage() {
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                     <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}만`} />
                     <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} width={72} />
-                    <Tooltip formatter={(v: number) => [`${v.toLocaleString()}만원`, "납부 세금"]} />
+                    <Tooltip formatter={((v: number | undefined) => [`${(v ?? 0).toLocaleString()}만원`, "납부 세금"]) as any} />
                     <Bar dataKey="세금" radius={[0, 4, 4, 0]}>
                       {[{ color: "#ef4444" }, { color: "#3b82f6" }].map((entry, i) => (
                         <Cell key={i} fill={entry.color} />
@@ -513,7 +513,7 @@ export default function CalculatorPage() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis dataKey="year" tick={{ fontSize: 11 }} interval={xInterval(pensionYears)} />
                     <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => v >= 10_000 ? `${(v / 10_000).toFixed(0)}억` : `${v}만`} width={46} />
-                    <Tooltip formatter={(v: number) => [`${v.toLocaleString()}만원`, "잔액"]} labelStyle={{ fontWeight: 600, fontSize: 12 }} contentStyle={{ fontSize: 12 }} />
+                    <Tooltip formatter={((v: number | undefined) => [`${(v ?? 0).toLocaleString()}만원`, "잔액"]) as any} labelStyle={{ fontWeight: 600, fontSize: 12 }} contentStyle={{ fontSize: 12 }} />
                     <Area type="monotone" dataKey="잔액" stroke="#3b82f6" fill="#dbeafe" strokeWidth={2} />
                   </AreaChart>
                 </ResponsiveContainer>
