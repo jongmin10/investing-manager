@@ -172,10 +172,20 @@ export default function ScreenerPage() {
   async function handleFinancialCollect() {
     setFinancialCollecting(true);
     try {
-      const res  = await fetch("/api/screener/financial", { method: "POST" });
-      const data = await res.json();
-      if (data.error) alert(data.error + "\n\n" + (data.guide ?? []).join("\n"));
-      else await fetchData();
+      // 20개씩 배치 수집 (Vercel 60초 타임아웃 대응)
+      let offset = 0;
+      while (true) {
+        const res  = await fetch("/api/screener/financial", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ offset, limit: 20 }),
+        });
+        const data = await res.json();
+        if (data.error) { alert(data.error + "\n\n" + (data.guide ?? []).join("\n")); break; }
+        if (!data.nextOffset) break;
+        offset = data.nextOffset;
+      }
+      await fetchData();
     } finally { setFinancialCollecting(false); }
   }
 

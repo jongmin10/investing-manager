@@ -110,12 +110,17 @@ async function fetchShares(dartCode: string, year: number): Promise<number | nul
 }
 
 // ── 전 종목 재무 수집 ─────────────────────────────────────
-export async function collectAllFinancials(): Promise<CollectFinancialsResult> {
+export async function collectAllFinancials(
+  options?: { offset?: number; limit?: number }
+): Promise<CollectFinancialsResult> {
   const key = process.env.DART_API_KEY;
   if (!key) return { success: false, total: 0, updated: 0, failed: [], noDartCode: 0, duration: 0 };
 
-  const start  = Date.now();
-  const stocks = await prisma.stock.findMany({ select: { id: true, name: true, dartCode: true } });
+  const start    = Date.now();
+  const allStocks = await prisma.stock.findMany({ select: { id: true, name: true, dartCode: true }, orderBy: { id: "asc" } });
+  const stocks   = options?.offset != null || options?.limit != null
+    ? allStocks.slice(options.offset ?? 0, options.limit ? (options.offset ?? 0) + options.limit : undefined)
+    : allStocks;
   const total  = stocks.length;
   const failed: string[] = [];
   let updated = 0, noDartCode = 0;
