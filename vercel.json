@@ -1,0 +1,8 @@
+{
+  "buildCommand": "prisma generate && prisma db push && next build",
+  "functions": {
+    "src/app/api/**": {
+      "maxDuration": 60
+    }
+  }
+}
