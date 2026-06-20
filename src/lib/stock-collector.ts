@@ -15,10 +15,15 @@ const BATCH_DELAY = 600;
 export interface StockQuote {
   symbol:        string;
   price:         number;
-  changePercent: number; // 전일 대비 등락률 (%)
+  changePercent: number;
   high52w:       number;
   low52w:        number;
   volume:        number | null;
+  trailingPE:    number | null; // NAVER _per      (TTM PER)
+  cnsPer:        number | null; // NAVER _cns_per  (추정 PER)
+  cnsEps:        number | null; // NAVER _cns_eps  (추정 EPS, 원)
+  pbr:           number | null; // NAVER _pbr
+  dividendYield: number | null; // NAVER _dvr      (배당수익률 %)
 }
 
 export interface CollectStocksResult {
@@ -31,43 +36,66 @@ export interface CollectStocksResult {
   updatedAt: Date;
 }
 
-// ── v8 chart API (기존 collector와 동일한 방식) ───────────
-async function fetchOne(symbol: string): Promise<StockQuote | null> {
-  // range=5d: 52주 고저는 meta에 내장, 전일 대비는 최근 2개 종가로 계산
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d&includePrePost=false`;
+const NAVER_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+  "Referer": "https://finance.naver.com/",
+};
 
-  let res: Response;
+// NAVER Finance HTML에서 PER·PBR 파싱 (한국 주식 전용)
+async function fetchNaverValuation(code: string): Promise<{
+  per: number | null; cnsPer: number | null; cnsEps: number | null;
+  pbr: number | null; dividendYield: number | null;
+}> {
   try {
-    res = await fetch(url, {
-      headers: YF_HEADERS,
-      cache: "no-store",
+    const res = await fetch(`https://finance.naver.com/item/main.naver?code=${code}`, {
+      headers: NAVER_HEADERS,
       signal: AbortSignal.timeout(10_000),
     });
+    if (!res.ok) return { per: null, cnsPer: null, cnsEps: null, pbr: null, dividendYield: null };
+    const html = await res.text();
+    const parse = (id: string) => {
+      const m = html.match(new RegExp(`id="${id}"[^>]*>([\\d,\\.]+)<`));
+      return m ? parseFloat(m[1].replace(/,/g, "")) : null;
+    };
+    return {
+      per:           parse("_per"),
+      cnsPer:        parse("_cns_per"),
+      cnsEps:        parse("_cns_eps"),
+      pbr:           parse("_pbr"),
+      dividendYield: parse("_dvr"),
+    };
   } catch {
-    return null;
+    return { per: null, cnsPer: null, cnsEps: null, pbr: null, dividendYield: null };
   }
-  if (!res.ok) return null;
+}
+
+// ── v8 chart API (가격·52주 고저·거래량) + NAVER Finance (PER·PBR) 병렬 수집 ──
+async function fetchOne(symbol: string): Promise<StockQuote | null> {
+  const chartUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d&includePrePost=false`;
+  const naverCode = symbol.replace(/\.(KS|KQ)$/, "");
+  const isKorean  = naverCode !== symbol;
+
+  const [chartRes, naver] = await Promise.all([
+    fetch(chartUrl, { headers: YF_HEADERS, cache: "no-store", signal: AbortSignal.timeout(10_000) })
+      .catch(() => null),
+    isKorean ? fetchNaverValuation(naverCode) : Promise.resolve({ per: null, cnsPer: null, cnsEps: null, pbr: null, dividendYield: null }),
+  ]);
+
+  if (!chartRes?.ok) return null;
 
   let json: unknown;
-  try { json = await res.json(); } catch { return null; }
+  try { json = await chartRes.json(); } catch { return null; }
 
   const result = (json as { chart?: { result?: unknown[] } })?.chart?.result?.[0] as {
     meta: Record<string, unknown>;
     indicators?: { quote?: { close?: (number | null)[] }[] };
-    timestamp?: number[];
   } | undefined;
-
   if (!result) return null;
 
-  const meta   = result.meta;
-  const price  = typeof meta.regularMarketPrice === "number" ? meta.regularMarketPrice : null;
+  const meta  = result.meta;
+  const price = typeof meta.regularMarketPrice === "number" ? meta.regularMarketPrice : null;
   if (!price) return null;
 
-  const high52w = typeof meta.fiftyTwoWeekHigh === "number" ? meta.fiftyTwoWeekHigh : price;
-  const low52w  = typeof meta.fiftyTwoWeekLow  === "number" ? meta.fiftyTwoWeekLow  : price;
-  const volume  = typeof meta.regularMarketVolume === "number" ? meta.regularMarketVolume : null;
-
-  // 전일 대비 등락률: 최근 2개 종가로 계산
   const closes = result.indicators?.quote?.[0]?.close?.filter((v): v is number => v != null) ?? [];
   let changePercent = 0;
   if (closes.length >= 2) {
@@ -76,7 +104,19 @@ async function fetchOne(symbol: string): Promise<StockQuote | null> {
     if (prev > 0) changePercent = parseFloat(((cur - prev) / prev * 100).toFixed(2));
   }
 
-  return { symbol, price, changePercent, high52w, low52w, volume };
+  return {
+    symbol,
+    price,
+    changePercent,
+    high52w:    typeof meta.fiftyTwoWeekHigh      === "number" ? meta.fiftyTwoWeekHigh      : price,
+    low52w:     typeof meta.fiftyTwoWeekLow       === "number" ? meta.fiftyTwoWeekLow       : price,
+    volume:     typeof meta.regularMarketVolume   === "number" ? meta.regularMarketVolume   : null,
+    trailingPE:    naver.per,
+    cnsPer:        naver.cnsPer,
+    cnsEps:        naver.cnsEps,
+    pbr:           naver.pbr,
+    dividendYield: naver.dividendYield,
+  };
 }
 
 function sleep(ms: number) {
@@ -120,12 +160,16 @@ export async function collectAllStocks(
       }
 
       const data = {
-        price:      quote.price,
-        high52w:    quote.high52w,
-        low52w:     quote.low52w,
-        changeRate: quote.changePercent,
-        volume:     quote.volume,
-        // marketCap, per, pbr: Phase 4 (DART) 에서 채움
+        price:         quote.price,
+        high52w:       quote.high52w,
+        low52w:        quote.low52w,
+        changeRate:    quote.changePercent,
+        volume:        quote.volume,
+        per:           quote.trailingPE,
+        cnsPer:        quote.cnsPer,
+        cnsEps:        quote.cnsEps,
+        pbr:           quote.pbr,
+        dividendYield: quote.dividendYield,
       };
 
       const existing = await prisma.stockSnapshot.findFirst({
@@ -133,7 +177,13 @@ export async function collectAllStocks(
       });
 
       if (existing) {
-        if (Math.abs(existing.price - quote.price) > 1) {
+        // 가격 변동이 없어도 per·cnsPer·pbr은 항상 갱신
+        const priceChanged = Math.abs(existing.price - quote.price) > 1;
+        const valuationChanged = existing.cnsPer !== quote.cnsPer
+          || existing.per    !== quote.trailingPE
+          || existing.cnsEps !== quote.cnsEps
+          || existing.dividendYield !== quote.dividendYield;
+        if (priceChanged || valuationChanged) {
           await prisma.stockSnapshot.update({
             where: { id: existing.id },
             data: { ...data, date: today },

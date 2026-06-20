@@ -10,8 +10,8 @@ interface StockItem {
   revenue: number | null; operatingProfit: number | null;
   revenueGrowth: number | null; opGrowth: number | null;
   netGrowth: number | null; opMargin: number | null;
-  eps: number | null; bps: number | null; dps: number | null;
-  per: number | null; pbr: number | null; dividendYield: number | null;
+  cnsEps: number | null;
+  per: number | null; cnsPer: number | null; pbr: number | null; dividendYield: number | null;
   period: string | null;
 }
 
@@ -492,11 +492,11 @@ export default function ScreenerPage() {
 
                   {/* 가치지표: PER·EPS·PBR·배당수익률 */}
                   <div className="flex flex-col gap-0.5">
-                    <ValBadge label="PER"  value={item.per}          unit="x"  low
-                      nullReason={item.eps == null ? "EPS없음" : item.eps <= 0 ? "적자" : null} />
-                    <ValBadge label="EPS"  value={item.eps}          unit="원" raw nullReason="미산출" />
+                    <ValBadge label="PER"    value={item.per}    unit="x"  low nullReason="적자/미제공" />
+                    <ValBadge label="추정PER" value={item.cnsPer} unit="x"  low nullReason="추정치없음" estimate />
+                    <ValBadge label="추정EPS" value={item.cnsEps} unit="원" won nullReason="추정치없음" estimate />
                     <ValBadge label="PBR"  value={item.pbr}          unit="x"  low nullReason="주식수미확인" />
-                    <ValBadge label="배당" value={item.dividendYield} unit="%" nullReason="무배당" />
+                    <ValBadge label="배당수익률" value={item.dividendYield} unit="%" nullReason="무배당" />
                   </div>
 
                   {/* 네이버 금융 링크 */}
@@ -551,10 +551,10 @@ function FilterInput({ label, value, onChange }: {
 
 // 가치지표 배지: PER·EPS·PBR·배당수익률
 function ValBadge({
-  label, value, unit, low = false, raw = false, nullReason,
+  label, value, unit, low = false, raw = false, won = false, nullReason, estimate = false,
 }: {
   label: string; value: number | null; unit: string;
-  low?: boolean; raw?: boolean; nullReason?: string | null;
+  low?: boolean; raw?: boolean; won?: boolean; nullReason?: string | null; estimate?: boolean;
 }) {
   if (value == null) {
     return (
@@ -565,20 +565,24 @@ function ValBadge({
     );
   }
   let display: string;
-  if (raw) {
+  if (won) {
+    display = value % 1 === 0
+      ? value.toLocaleString("ko-KR")
+      : value.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  } else if (raw) {
     display = value >= 10_000
       ? (value / 10_000).toFixed(0) + "만"
       : value.toLocaleString("ko-KR");
   } else {
-    display = value.toFixed(unit === "%" ? 2 : 1);
+    display = value.toFixed(2);
   }
   const color = raw ? "text-gray-600"
     : low
       ? (value < 10 ? "text-emerald-600" : value < 20 ? "text-blue-500" : "text-gray-500")
       : (value >= 3 ? "text-emerald-600" : value >= 1 ? "text-blue-500" : "text-gray-400");
   return (
-    <div className="flex items-center justify-between gap-1 px-1.5 py-0.5 rounded text-[10px] bg-gray-50">
-      <span className="text-gray-400">{label}</span>
+    <div className={`flex items-center justify-between gap-1 px-1.5 py-0.5 rounded text-[10px] ${estimate ? "bg-amber-50 border border-amber-100" : "bg-gray-50"}`}>
+      <span className={estimate ? "text-amber-500" : "text-gray-400"}>{label}</span>
       <span className={`font-bold ${color}`}>{display}{unit}</span>
     </div>
   );

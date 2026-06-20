@@ -69,20 +69,18 @@ export async function GET(req: NextRequest) {
     revenueGrowth: number | null; opGrowth: number | null;
     netGrowth: number | null; opMargin: number | null;
     // 가치지표
-    eps: number | null; bps: number | null; dps: number | null;
-    per: number | null; pbr: number | null; dividendYield: number | null;
+    cnsEps: number | null;
+    per: number | null; cnsPer: number | null; pbr: number | null; dividendYield: number | null;
     period: string | null;
   };
 
   let items: Item[] = snapshots.map((s) => {
     const fin = financialMap.get(s.stockId);
-    const eps = fin?.eps ?? null;
-    const bps = fin?.bps ?? null;
-    const dps = fin?.dps ?? null;
-    const per = eps && eps > 0 && s.price > 0 ? parseFloat((s.price / eps).toFixed(1)) : null;
-    const pbr = bps && bps > 0 && s.price > 0 ? parseFloat((s.price / bps).toFixed(2)) : null;
-    const dividendYield = dps && dps > 0 && s.price > 0
-      ? parseFloat((dps / s.price * 100).toFixed(2)) : null;
+    const per          = s.per    != null ? parseFloat(s.per.toFixed(2))    : null;
+    const cnsPer       = s.cnsPer != null ? parseFloat(s.cnsPer.toFixed(2)) : null;
+    const cnsEps       = s.cnsEps != null ? parseFloat(s.cnsEps.toFixed(2)) : null;
+    const pbr          = s.pbr    != null ? parseFloat(s.pbr.toFixed(2))    : null;
+    const dividendYield = s.dividendYield != null ? parseFloat(s.dividendYield.toFixed(2)) : null;
     return {
       id: s.stockId, name: s.stock.name,
       market: s.stock.market, sector: s.stock.sector,
@@ -96,7 +94,7 @@ export async function GET(req: NextRequest) {
       opGrowth:        fin?.opGrowth        ?? null,
       netGrowth:       fin?.netGrowth       ?? null,
       opMargin:        fin?.opMargin        ?? null,
-      eps, bps, dps, per, pbr, dividendYield,
+      cnsEps, per, cnsPer, pbr, dividendYield,
       period: fin?.period ?? null,
     };
   });

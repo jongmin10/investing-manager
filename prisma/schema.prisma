@@ -158,7 +158,10 @@ model StockSnapshot {
   changeRate   Float?             // 전일 대비 등락률 (%)
   marketCap    Float?             // 시가총액 (억원)
   per          Float?
+  cnsPer       Float?             // 컨센서스(추정) PER  — NAVER _cns_per
+  cnsEps       Float?             // 컨센서스(추정) EPS  — NAVER _cns_eps (원)
   pbr          Float?
+  dividendYield Float?            // 배당수익률 (%)       — NAVER _dvr
   volume       Float?             // 거래량
   avgVolume20d Float?             // 20일 평균 거래량
 
