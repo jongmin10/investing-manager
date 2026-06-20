@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+export const revalidate = 300;
 import { prisma } from "@/lib/prisma";
 import { INDICATORS, IndicatorType } from "@/lib/indicators";
 
