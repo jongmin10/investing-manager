@@ -21,14 +21,22 @@ function LoginForm() {
     setLoading(true);
     setError("");
 
-    const res = await signIn("credentials", { email, name, redirect: false });
-
-    if (res?.error) {
-      setError("로그인에 실패했습니다. 다시 시도해주세요.");
+    try {
+      const res = await signIn("credentials", { email, name, redirect: false });
+      if (res?.error) {
+        setError("로그인에 실패했습니다. 다시 시도해주세요.");
+        setLoading(false);
+      } else if (res?.ok) {
+        router.push(callbackUrl);
+        router.refresh();
+      } else {
+        setError("알 수 없는 오류가 발생했습니다.");
+        setLoading(false);
+      }
+    } catch (err) {
+      console.error("로그인 오류:", err);
+      setError("서버 연결에 실패했습니다. 잠시 후 다시 시도해주세요.");
       setLoading(false);
-    } else {
-      router.push(callbackUrl);
-      router.refresh();
     }
   }
 

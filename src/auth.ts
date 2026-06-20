@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" },
+  trustHost: true,
   pages: { signIn: "/login" },
   providers: [
     // 로컬 개발용: 이메일만 입력하면 로그인
