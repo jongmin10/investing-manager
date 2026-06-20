@@ -137,7 +137,7 @@ export default function PortfolioPage() {
       {/* ── 헤더 ── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">내 포트폴리오</h1>
+          <h1 className="text-2xl font-bold text-gray-900">투자전략 플래너</h1>
           <p className="text-sm text-gray-400 mt-0.5">현재 경제지표를 반영한 맞춤 자산 배분 제안</p>
         </div>
         <Link href="/survey" className="text-sm text-blue-500 hover:text-blue-700 border border-blue-300 rounded-full px-4 py-1.5 hover:bg-blue-50 transition-colors">

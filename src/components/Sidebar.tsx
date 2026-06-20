@@ -11,9 +11,11 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/",           icon: "📊", label: "대시보드" },
-  { href: "/portfolio",  icon: "💼", label: "포트폴리오" },
+  { href: "/report",     icon: "📰", label: "시황 리포트" },
+  { href: "/portfolio",  icon: "💼", label: "투자전략 플래너" },
   { href: "/tracker",    icon: "📈", label: "수익률 트래커" },
   { href: "/calculator", icon: "🧮", label: "복리 계산기" },
+  { href: "/journal",    icon: "📔", label: "투자 일기" },
   { href: "/gurus",      icon: "🏆", label: "투자 대가 13F" },
   { href: "/screener",   icon: "🔍", label: "종목 스크리너",
     children: [

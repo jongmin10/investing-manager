@@ -35,6 +35,7 @@ model User {
   alertHistories    AlertHistory[]
   favoriteEvents    FavoriteEvent[]
   portfolioHoldings PortfolioHolding[]
+  journalEntries    JournalEntry[]
 }
 
 model Account {
@@ -220,4 +221,53 @@ model GuruHolding {
 
   @@unique([guruId, quarter, cusip])
   @@index([guruId, quarter])
+}
+
+// 일일 시황 리포트
+model MarketReport {
+  id           String   @id @default(cuid())
+  date         DateTime @unique  // 리포트 기준일 (자정 UTC)
+
+  kospi        Float?
+  kospiChange  Float?
+  kosdaq       Float?
+  kosdaqChange Float?
+  krwUsd       Float?
+  krwUsdChange Float?
+  sp500        Float?
+  sp500Change  Float?
+  vix          Float?
+  us10y        Float?
+  us10yChange  Float?
+
+  summaryKr    String?  // 한국 시황 요약 (1000자 이내)
+  summaryUs    String?  // 미국 시황 요약 (1000자 이내)
+  insightDcIrp String? // 퇴직연금 시사점 (150자 이내)
+
+  status      String   @default("pending") // pending | done | failed
+  generatedAt DateTime @default(now())
+}
+
+// 투자 일기
+model JournalEntry {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date         DateTime
+  title        String
+  body         String
+  mood         String?  // "anxious" | "neutral" | "optimistic" | "confident"
+  decisionType String?  // "buy" | "sell" | "rebalance" | "hold" | "analysis"
+  tickers      String?  // JSON: ["OXY","AAPL"]
+
+  // 작성 시점 시장 스냅샷
+  snapshotKospi   Float?
+  snapshotSp500   Float?
+  snapshotKrwUsd  Float?
+  snapshotUs10y   Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, date])
 }
