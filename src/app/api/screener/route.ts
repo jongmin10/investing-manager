@@ -12,7 +12,8 @@ export async function GET(req: NextRequest) {
   const revenueGrowthMin = sp.get("revenueGrowthMin") ? parseFloat(sp.get("revenueGrowthMin")!) : null;
   const opGrowthMin      = sp.get("opGrowthMin")      ? parseFloat(sp.get("opGrowthMin")!)      : null;
   const netGrowthMin     = sp.get("netGrowthMin")     ? parseFloat(sp.get("netGrowthMin")!)     : null;
-  const opMarginMin      = sp.get("opMarginMin")      ? parseFloat(sp.get("opMarginMin")!)      : null;
+  const opMarginMin        = sp.get("opMarginMin")        ? parseFloat(sp.get("opMarginMin")!)        : null;
+  const dividendYieldMin   = sp.get("dividendYieldMin")   ? parseFloat(sp.get("dividendYieldMin")!)   : null;
   const revenueMin       = sp.get("revenueMin")       ? parseFloat(sp.get("revenueMin")!)       : null;
   const profitableOnly   = sp.get("profitableOnly")   === "true";
   const volumeMin        = sp.get("volumeMin")        ? parseFloat(sp.get("volumeMin")!)        : null;
@@ -120,6 +121,8 @@ export async function GET(req: NextRequest) {
     items = items.filter((i) => i.netGrowth != null && i.netGrowth >= netGrowthMin);
   if (opMarginMin !== null)
     items = items.filter((i) => i.opMargin != null && i.opMargin >= opMarginMin);
+  if (dividendYieldMin !== null)
+    items = items.filter((i) => i.dividendYield != null && i.dividendYield >= dividendYieldMin);
 
   // ── 정렬 ──────────────────────────────────────────────
   items.sort((a, b) => {

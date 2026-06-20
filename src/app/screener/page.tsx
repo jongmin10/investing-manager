@@ -44,9 +44,7 @@ const RATE_PRESETS: { key: RatePreset; label: string; min: string; max: string }
 ];
 
 function fmtPrice(v: number) {
-  return v >= 10_000
-    ? (v / 10_000).toLocaleString("ko-KR", { maximumFractionDigits: 0 }) + "만"
-    : v.toLocaleString("ko-KR") + "원";
+  return v.toLocaleString("ko-KR") + "원";
 }
 function fmtVolume(v: number | null) {
   if (v == null) return "-";
@@ -96,6 +94,7 @@ export default function ScreenerPage() {
   const [opGrowthMin,      setOpGrowthMin]      = useState("");
   const [netGrowthMin,     setNetGrowthMin]     = useState("");        // A: 순이익 성장률
   const [opMarginMin,      setOpMarginMin]      = useState("");
+  const [dividendYieldMin, setDividendYieldMin] = useState("");
   const [sortBy,           setSortBy]           = useState<SortKey>("high52wRatio");
 
   // 등락률 프리셋 선택 시 min/max 자동 설정
@@ -108,9 +107,9 @@ export default function ScreenerPage() {
     }
   }
 
-  const hasFinancialFilter = revenueGrowthMin || opGrowthMin || netGrowthMin || opMarginMin || profitableOnly || revenueMin;
+  const hasFinancialFilter = revenueGrowthMin || opGrowthMin || netGrowthMin || opMarginMin || profitableOnly || revenueMin || dividendYieldMin;
   const hasAnyFilter = sector || use52w || ratePreset !== "" || volumeMin ||
-    revenueGrowthMin || opGrowthMin || netGrowthMin || opMarginMin ||
+    revenueGrowthMin || opGrowthMin || netGrowthMin || opMarginMin || dividendYieldMin ||
     profitableOnly || revenueMin || market !== "ALL";
 
   const fetchData = useCallback(async () => {
@@ -128,6 +127,7 @@ export default function ScreenerPage() {
     if (opGrowthMin)                p.set("opGrowthMin", opGrowthMin);
     if (netGrowthMin)               p.set("netGrowthMin", netGrowthMin);
     if (opMarginMin)                p.set("opMarginMin", opMarginMin);
+    if (dividendYieldMin)           p.set("dividendYieldMin", dividendYieldMin);
     p.set("sortBy", sortBy);
 
     const res  = await fetch(`/api/screener?${p}`);
@@ -136,7 +136,7 @@ export default function ScreenerPage() {
     setLoading(false);
   }, [market, sector, use52w, high52wMin, changeRateMin, changeRateMax,
       volumeMin, profitableOnly, revenueMin,
-      revenueGrowthMin, opGrowthMin, netGrowthMin, opMarginMin, sortBy]);
+      revenueGrowthMin, opGrowthMin, netGrowthMin, opMarginMin, dividendYieldMin, sortBy]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -160,7 +160,7 @@ export default function ScreenerPage() {
     setMarket("ALL"); setSector(""); setUse52w(false); setHigh52wMin(80);
     setRatePreset(""); setChangeRateMin(""); setChangeRateMax("");
     setVolumeMin(""); setProfitableOnly(false); setRevenueMin("");
-    setRevenueGrowthMin(""); setOpGrowthMin(""); setNetGrowthMin(""); setOpMarginMin("");
+    setRevenueGrowthMin(""); setOpGrowthMin(""); setNetGrowthMin(""); setOpMarginMin(""); setDividendYieldMin("");
   }
 
   const fin     = result?.financialStatus;
@@ -353,8 +353,9 @@ export default function ScreenerPage() {
           <div className="flex flex-wrap items-center gap-4">
             <FilterInput label="매출 성장" value={revenueGrowthMin} onChange={setRevenueGrowthMin} />
             <FilterInput label="영업이익 성장" value={opGrowthMin} onChange={setOpGrowthMin} />
-            <FilterInput label="순이익 성장" value={netGrowthMin} onChange={setNetGrowthMin} />  {/* A: 신규 */}
+            <FilterInput label="순이익 성장" value={netGrowthMin} onChange={setNetGrowthMin} />
             <FilterInput label="영업이익률" value={opMarginMin} onChange={setOpMarginMin} />
+            <FilterInput label="배당수익률" value={dividendYieldMin} onChange={setDividendYieldMin} />
           </div>
         </div>
 
