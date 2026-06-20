@@ -185,21 +185,60 @@ export default function ScreenerPage() {
               {result.isUpToDate ? "✓ 오늘 수집" : `마지막 ${fmtTime(result.collectedAt)}`}
             </span>
           )}
-          <button onClick={handleCollect} disabled={collecting}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white text-xs font-medium rounded-xl transition-colors">
-            {collecting
-              ? <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />수집 중...</>
-              : "↻ 주가 수집"}
-          </button>
-          <button onClick={handleFinancialCollect} disabled={financialCollecting}
-            title={fin?.hasDartKey ? "DART 재무 데이터 수집" : "DART_API_KEY 설정 필요"}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border transition-colors disabled:opacity-50 ${
-              fin?.hasDartKey ? "border-violet-200 text-violet-600 hover:bg-violet-50" : "border-gray-200 text-gray-400 cursor-not-allowed"
-            }`}>
-            {financialCollecting
-              ? <><span className="w-3 h-3 border-2 border-violet-300/40 border-t-violet-500 rounded-full animate-spin" />수집 중...</>
-              : <>📋 재무 수집 {fin ? `(${fin.count}개)` : ""}</>}
-          </button>
+          <div className="relative group">
+            <button onClick={handleCollect} disabled={collecting}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white text-xs font-medium rounded-xl transition-colors">
+              {collecting
+                ? <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />수집 중...</>
+                : "↻ 주가 수집"}
+            </button>
+            <div className="absolute right-0 top-full mt-1.5 z-50 hidden group-hover:block w-52 bg-gray-900 text-white text-[11px] rounded-xl shadow-xl p-3 pointer-events-none">
+              <div className="absolute -top-1.5 right-4 w-3 h-3 bg-gray-900 rotate-45 rounded-sm" />
+              <p className="font-semibold text-white mb-1.5">주가 수집 항목</p>
+              <ul className="space-y-0.5 text-gray-300">
+                <li>· 현재가 · 등락률 · 거래량</li>
+                <li>· 52주 최고가 · 최저가</li>
+                <li>· PER(TTM) · 추정PER · 추정EPS</li>
+                <li>· PBR · 배당수익률</li>
+              </ul>
+              <p className="mt-1.5 text-gray-400">Yahoo Finance + NAVER Finance</p>
+            </div>
+          </div>
+          <div className="relative group">
+            <button onClick={handleFinancialCollect} disabled={financialCollecting}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border transition-colors disabled:opacity-50 ${
+                fin?.hasDartKey ? "border-violet-200 text-violet-600 hover:bg-violet-50" : "border-gray-200 text-gray-400 cursor-not-allowed"
+              }`}>
+              {financialCollecting
+                ? <><span className="w-3 h-3 border-2 border-violet-300/40 border-t-violet-500 rounded-full animate-spin" />수집 중...</>
+                : <>📋 재무 수집 {fin ? `(${fin.count}개)` : ""}</>}
+            </button>
+            {/* 호버 툴팁 */}
+            <div className="absolute right-0 top-full mt-1.5 z-50 hidden group-hover:block w-52 bg-gray-900 text-white text-[11px] rounded-xl shadow-xl p-3 pointer-events-none">
+              <div className="absolute -top-1.5 right-4 w-3 h-3 bg-gray-900 rotate-45 rounded-sm" />
+              {fin?.hasDartKey ? (
+                <>
+                  <p className="font-semibold text-white mb-1.5">DART 재무 수집 항목</p>
+                  <ul className="space-y-0.5 text-gray-300">
+                    <li>· 매출 / 영업이익 / 순이익</li>
+                    <li>· 매출·영업이익·순이익 성장률</li>
+                    <li>· 영업이익률</li>
+                    <li>· EPS · BPS · DPS</li>
+                  </ul>
+                  <p className="mt-1.5 text-gray-400">사업보고서 기준 연간 데이터</p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold text-amber-400 mb-1.5">⚠ DART_API_KEY 필요</p>
+                  <ol className="space-y-0.5 text-gray-300 list-decimal list-inside">
+                    <li>opendart.fss.or.kr 키 발급</li>
+                    <li>.env 에 DART_API_KEY=키 추가</li>
+                    <li>서버 재시작</li>
+                  </ol>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
