@@ -430,11 +430,11 @@ export default function ScreenerPage() {
         </div>
 
         {/* 컬럼 헤더 */}
-        <div className="grid grid-cols-[2fr_1fr_1fr_1.8fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-2 bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+        <div className="grid grid-cols-[2fr_1.2fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-2 bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
           <span>종목</span>
           <span className="text-right">현재가</span>
           <span className="text-right">등락률</span>
-          <span>52주 고가 근접</span>
+          <span className="text-right">52주 고가 근접</span>
           <span className="text-center">재무 (YoY)</span>
           <span className="text-center">가치지표</span>
           <span className="w-8" />
@@ -444,7 +444,7 @@ export default function ScreenerPage() {
         {loading && (
           <div className="divide-y divide-gray-50">
             {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="grid grid-cols-[2fr_1fr_1fr_1.8fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-3.5 animate-pulse">
+              <div key={i} className="grid grid-cols-[2fr_1.2fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-3.5 animate-pulse">
                 <div className="h-4 bg-gray-100 rounded w-3/4" />
                 <div className="h-4 bg-gray-100 rounded" />
                 <div className="h-4 bg-gray-100 rounded w-3/4 ml-auto" />
@@ -478,7 +478,7 @@ export default function ScreenerPage() {
 
               return (
                 <div key={item.id}
-                  className="grid grid-cols-[2fr_1fr_1fr_1.8fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-3.5 hover:bg-gray-50/70 transition-colors items-center">
+                  className="grid grid-cols-[2fr_1.2fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-3.5 hover:bg-gray-50/70 transition-colors items-center">
 
                   {/* 종목명 */}
                   <div className="min-w-0">
@@ -510,16 +510,10 @@ export default function ScreenerPage() {
                   </div>
 
                   {/* 52주 고가 근접 */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold px-2 py-0.5 rounded-full"
-                        style={{ color: ratioColor, background: ratioBg }}>{ratio}%</span>
-                      <span className="text-[11px] text-gray-400">고 {fmtPrice(item.high52w)}</span>
-                    </div>
-                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all"
-                        style={{ width: `${Math.min(ratio, 100)}%`, background: ratioColor }} />
-                    </div>
+                  <div className="flex flex-col gap-1 items-end">
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full"
+                      style={{ color: ratioColor, background: ratioBg }}>{ratio}%</span>
+                    <span className="text-[11px] text-gray-400">고 {fmtPrice(item.high52w)}</span>
                   </div>
 
                   {/* 재무 지표 */}

@@ -189,3 +189,35 @@ model StockFinancial {
   @@unique([stockId, period])
   @@index([stockId])
 }
+
+// 투자 대가 13F
+model Guru {
+  id          String        @id   // "buffett" | "ackman" 등
+  name        String
+  fund        String
+  cik         String        @unique
+  description String?
+  updatedAt    DateTime?
+  totalAssetsM Float?   // 총자산 (백만달러) — EDGAR XBRL 10-Q/10-K
+  cashM        Float?   // 현금+단기투자 (백만달러) — EDGAR XBRL
+  assetsQuarter String? // 총자산 기준 분기 (예: "2025Q4")
+  holdings    GuruHolding[]
+}
+
+model GuruHolding {
+  id           String  @id @default(cuid())
+  guruId       String
+  guru         Guru    @relation(fields: [guruId], references: [id])
+  quarter      String  // "2024Q4"
+  cusip        String
+  ticker       String?
+  company      String
+  shares       Float
+  value        Float   // 천달러 단위 (13F 원본)
+  portfolioPct Float?
+  changeType   String? // "new" | "added" | "reduced" | "unchanged"
+  changePct    Float?
+
+  @@unique([guruId, quarter, cusip])
+  @@index([guruId, quarter])
+}

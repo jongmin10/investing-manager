@@ -23,6 +23,26 @@ function fmtPct(v: number | null) {
   return v.toFixed(2);
 }
 
+function FinBadge({ label, value, isGrowth, nullReason }: {
+  label: string; value: number | null; isGrowth: boolean; nullReason?: string;
+}) {
+  if (value == null) return (
+    <div className="flex items-center justify-between gap-1 px-1.5 py-0.5 rounded text-[10px] bg-gray-50/60">
+      <span className="text-gray-300">{label}</span>
+      <span className="text-gray-300 text-[9px] italic">{nullReason ?? "-"}</span>
+    </div>
+  );
+  const color = isGrowth
+    ? (value >= 20 ? "text-emerald-600" : value >= 0 ? "text-blue-500" : "text-red-400")
+    : (value >= 15 ? "text-emerald-600" : value >= 5 ? "text-blue-500" : "text-gray-400");
+  return (
+    <div className="flex items-center justify-between gap-1 px-1.5 py-0.5 rounded text-[10px] bg-gray-50">
+      <span className="text-gray-400">{label}</span>
+      <span className={`font-bold ${color}`}>{value >= 0 && isGrowth ? "+" : ""}{value.toFixed(1)}%</span>
+    </div>
+  );
+}
+
 function Badge({ label, value, unit, estimate = false }: {
   label: string; value: number | null; unit: string; estimate?: boolean;
 }) {
@@ -105,11 +125,12 @@ export default function WatchlistPage() {
       {/* 본문 */}
       <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
         {/* 컬럼 헤더 */}
-        <div className="grid grid-cols-[2fr_1fr_1fr_1.8fr_1.5fr_auto] gap-x-3 px-5 py-2 bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+        <div className="grid grid-cols-[2fr_1.2fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-2 bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
           <span>종목</span>
           <span className="text-right">현재가</span>
           <span className="text-right">등락률</span>
-          <span>52주 고가 근접</span>
+          <span className="text-right">52주 고가 근접</span>
+          <span className="text-center">재무 (YoY)</span>
           <span className="text-center">가치지표</span>
           <span className="w-8" />
         </div>
@@ -118,10 +139,11 @@ export default function WatchlistPage() {
         {loading && (
           <div className="divide-y divide-gray-50">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="grid grid-cols-[2fr_1fr_1fr_1.8fr_1.5fr_auto] gap-x-3 px-5 py-3.5 animate-pulse">
+              <div key={i} className="grid grid-cols-[2fr_1.2fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-3.5 animate-pulse">
                 <div className="h-4 bg-gray-100 rounded w-3/4" />
                 <div className="h-4 bg-gray-100 rounded" />
                 <div className="h-4 bg-gray-100 rounded w-3/4 ml-auto" />
+                <div className="h-4 bg-gray-100 rounded" />
                 <div className="h-4 bg-gray-100 rounded" />
                 <div className="h-4 bg-gray-100 rounded" />
                 <div className="w-8" />
@@ -152,7 +174,7 @@ export default function WatchlistPage() {
 
               return (
                 <div key={item.id}
-                  className="grid grid-cols-[2fr_1fr_1fr_1.8fr_1.5fr_auto] gap-x-3 px-5 py-3.5 hover:bg-gray-50/70 transition-colors items-center">
+                  className="grid grid-cols-[2fr_1.2fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-3.5 hover:bg-gray-50/70 transition-colors items-center">
 
                   {/* 종목명 */}
                   <div className="min-w-0">
@@ -180,17 +202,26 @@ export default function WatchlistPage() {
                   </div>
 
                   {/* 52주 고가 근접 */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold px-2 py-0.5 rounded-full"
-                        style={{ color: ratioColor, background: ratioBg }}>{ratio}%</span>
-                      <span className="text-[11px] text-gray-400">고 {fmtPrice(item.high52w)}</span>
-                    </div>
-                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all"
-                        style={{ width: `${Math.min(ratio, 100)}%`, background: ratioColor }} />
-                    </div>
+                  <div className="flex flex-col gap-1 items-end">
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full"
+                      style={{ color: ratioColor, background: ratioBg }}>{ratio}%</span>
+                    <span className="text-[11px] text-gray-400">고 {fmtPrice(item.high52w)}</span>
                   </div>
+
+                  {/* 재무 지표 */}
+                  {(() => {
+                    const FIN_SECTORS = ["금융", "보험", "은행", "증권"];
+                    const isFinancial = FIN_SECTORS.some(s => item.sector?.includes(s));
+                    return (
+                      <div className="flex flex-col gap-0.5">
+                        <FinBadge label="매출"   value={item.revenueGrowth} isGrowth
+                          nullReason={item.revenue == null ? (isFinancial ? "금융업 특성" : "데이터없음") : "미산출"} />
+                        <FinBadge label="영업↑"  value={item.opGrowth}  isGrowth nullReason="미산출" />
+                        <FinBadge label="순이익" value={item.netGrowth} isGrowth nullReason="미산출" />
+                        <FinBadge label="마진"   value={item.opMargin}  isGrowth={false} nullReason="미산출" />
+                      </div>
+                    );
+                  })()}
 
                   {/* 가치지표 */}
                   <div className="flex flex-col gap-0.5">
