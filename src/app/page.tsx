@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { INDICATOR_TYPES, INDICATORS, IndicatorType } from "@/lib/indicators";
 import IndicatorCard from "@/components/IndicatorCard";
@@ -6,26 +7,27 @@ import MarketSummaryCard from "@/components/MarketSummary";
 import { REALTIME_SYMBOLS } from "@/lib/collector";
 import { generateMarketSummary } from "@/lib/analysis";
 
-async function getLatestIndicators() {
-  const results = await Promise.all(
-    INDICATOR_TYPES.map(async (type) => {
-      const records = await prisma.indicatorRecord.findMany({
-        where: { type },
-        orderBy: { recordedAt: "desc" },
-        take: 2,
-      });
+const getLatestIndicators = unstable_cache(
+  async () => {
+    const allRecords = await prisma.indicatorRecord.findMany({
+      where:   { type: { in: [...INDICATOR_TYPES] } },
+      orderBy: { recordedAt: "desc" },
+    });
 
-      const current = records[0];
+    const byType = new Map<string, typeof allRecords>();
+    for (const r of allRecords) {
+      const list = byType.get(r.type) ?? [];
+      if (list.length < 2) { list.push(r); byType.set(r.type, list); }
+    }
+
+    return INDICATOR_TYPES.map((type) => {
+      const records = byType.get(type) ?? [];
+      const current  = records[0];
       const previous = records[1];
-
       if (!current) return null;
-
       const change = previous ? current.value - previous.value : 0;
-      const changePercent =
-        previous && previous.value !== 0
-          ? ((current.value - previous.value) / previous.value) * 100
-          : 0;
-
+      const changePercent = previous && previous.value !== 0
+        ? ((current.value - previous.value) / previous.value) * 100 : 0;
       return {
         type: type as IndicatorType,
         value: current.value,
@@ -33,17 +35,14 @@ async function getLatestIndicators() {
         change,
         changePercent,
       };
-    })
-  );
-
-  return results.filter(Boolean) as {
-    type: IndicatorType;
-    value: number;
-    recordedAt: string;
-    change: number;
-    changePercent: number;
-  }[];
-}
+    }).filter(Boolean) as {
+      type: IndicatorType; value: number; recordedAt: string;
+      change: number; changePercent: number;
+    }[];
+  },
+  ["dashboard-indicators"],
+  { revalidate: 300 }
+);
 
 function Divider({ label }: { label: string }) {
   return (
@@ -55,7 +54,7 @@ function Divider({ label }: { label: string }) {
   );
 }
 
-export const dynamic = "force-dynamic"; // 항상 최신 DB 데이터 반환
+export const revalidate = 300;
 
 const REALTIME_TYPES = new Set<string>(REALTIME_SYMBOLS.map((s) => s.type));
 
