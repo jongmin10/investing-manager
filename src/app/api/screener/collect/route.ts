@@ -1,22 +1,35 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { collectAllStocks } from "@/lib/stock-collector";
+import { prisma } from "@/lib/prisma";
 
 let collecting = false;
 
-export async function POST() {
+// Vercel 타임아웃(60초) 대응: offset/limit으로 배치 수집
+export async function POST(req: NextRequest) {
   if (collecting) {
-    return NextResponse.json(
-      { error: "이미 수집 중입니다. 잠시 후 다시 시도하세요." },
-      { status: 429 }
-    );
+    return NextResponse.json({ error: "이미 수집 중입니다." }, { status: 429 });
   }
+
+  const body = await req.json().catch(() => ({})) as { offset?: number; limit?: number };
+  const offset = body.offset ?? 0;
+  const limit  = body.limit  ?? 30; // 30개씩 처리 (약 45초)
 
   collecting = true;
   try {
-    const result = await collectAllStocks();
+    const result = await collectAllStocks(undefined, { offset, limit });
+
+    // 전체 종목 수 조회
+    const totalStocks = await prisma.stock.count();
+    const nextOffset  = offset + limit;
+    const hasMore     = nextOffset < totalStocks;
+
     return NextResponse.json({
       ...result,
-      message: `${result.updated}개 종목 업데이트 완료 (${(result.duration / 1000).toFixed(1)}초)`,
+      offset,
+      limit,
+      nextOffset: hasMore ? nextOffset : null,
+      totalStocks,
+      message: `${offset + 1}~${Math.min(offset + limit, totalStocks)}번 종목 업데이트 완료`,
     });
   } finally {
     collecting = false;

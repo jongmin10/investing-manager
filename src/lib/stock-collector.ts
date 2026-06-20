@@ -125,11 +125,15 @@ function sleep(ms: number) {
 
 // ── 전 종목 수집 ──────────────────────────────────────────
 export async function collectAllStocks(
-  onProgress?: (done: number, total: number) => void
+  onProgress?: (done: number, total: number) => void,
+  options?: { offset?: number; limit?: number }
 ): Promise<CollectStocksResult> {
   const start = Date.now();
 
-  const stocks = await prisma.stock.findMany({ select: { id: true, yahooSymbol: true } });
+  const allStocks = await prisma.stock.findMany({ select: { id: true, yahooSymbol: true }, orderBy: { id: "asc" } });
+  const stocks = options?.offset != null || options?.limit != null
+    ? allStocks.slice(options.offset ?? 0, options.limit ? (options.offset ?? 0) + options.limit : undefined)
+    : allStocks;
   const total  = stocks.length;
 
   const today    = new Date();

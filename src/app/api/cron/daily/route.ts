@@ -27,10 +27,17 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // 2. 주가 스냅샷 수집
-    const stockResult = await collectAllStocks();
-    results.stocks = { updated: stockResult.updated, failed: stockResult.failed.length };
-    console.log(`[cron] 주가 수집: ${stockResult.updated}개 업데이트`);
+    // 2. 주가 스냅샷 수집 (30개씩 배치)
+    let totalUpdated = 0, offset = 0;
+    while (true) {
+      const stockResult = await collectAllStocks(undefined, { offset, limit: 30 });
+      totalUpdated += stockResult.updated;
+      const totalStocks = await prisma.stock.count();
+      if (offset + 30 >= totalStocks) break;
+      offset += 30;
+    }
+    results.stocks = { updated: totalUpdated };
+    console.log(`[cron] 주가 수집: ${totalUpdated}개 업데이트`);
   } catch (err) {
     results.stocksError = String(err);
     console.error("[cron] 주가 수집 오류:", err);
