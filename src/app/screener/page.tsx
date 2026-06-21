@@ -334,15 +334,15 @@ export default function ScreenerPage() {
 
         {/* 행 2: 가격 조건 */}
         <div className="space-y-3 pt-3 border-t border-gray-100">
-          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">가격 조건</p>
-          <div className="flex flex-wrap items-center gap-5">
-            {/* 52주 신고가 */}
+          {/* 헤더 + 52주 신고가 토글 (우측) */}
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">가격 조건</p>
             <div className="flex items-center gap-3">
               <div onClick={() => setUse52w((v) => !v)}
                 className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${use52w ? "bg-blue-500" : "bg-gray-400"}`}>
                 <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${use52w ? "translate-x-4" : "translate-x-0.5"}`} />
               </div>
-              <span className="text-xs font-medium text-gray-700 cursor-pointer" onClick={() => setUse52w((v) => !v)}>52주 신고가</span>
+              <span className="text-xs font-medium text-gray-700 cursor-pointer whitespace-nowrap" onClick={() => setUse52w((v) => !v)}>52주 신고가</span>
               {use52w && (
                 <div className="flex items-center gap-2">
                   <input type="range" min={50} max={100} step={1} value={high52wMin}
@@ -352,29 +352,29 @@ export default function ScreenerPage() {
                 </div>
               )}
             </div>
+          </div>
 
-            {/* 등락률 퀵 버튼 (A: 개선) */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-gray-500 whitespace-nowrap shrink-0">등락률</span>
-              <div className="flex flex-wrap gap-1 rounded-xl">
-                {RATE_PRESETS.map(({ key, label }) => (
-                  <button key={key} onClick={() => handleRatePreset(key)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
-                      ratePreset === key ? "bg-blue-500 text-white border border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border border-gray-300 hover:bg-gray-300 hover:text-gray-900"
-                    }`}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {ratePreset === "custom" && (
-                <div className="flex items-center gap-1">
-                  <NumInput value={changeRateMin} onChange={setChangeRateMin} placeholder="-10" width="w-16" />
-                  <span className="text-xs text-gray-400">~</span>
-                  <NumInput value={changeRateMax} onChange={setChangeRateMax} placeholder="+10" width="w-16" />
-                  <span className="text-xs text-gray-400">%</span>
-                </div>
-              )}
+          {/* 등락률 퀵 버튼 (자체 줄) */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-gray-500 whitespace-nowrap shrink-0">등락률</span>
+            <div className="flex flex-wrap gap-1 rounded-xl">
+              {RATE_PRESETS.map(({ key, label }) => (
+                <button key={key} onClick={() => handleRatePreset(key)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                    ratePreset === key ? "bg-blue-500 text-white border border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border border-gray-300 hover:bg-gray-300 hover:text-gray-900"
+                  }`}>
+                  {label}
+                </button>
+              ))}
             </div>
+            {ratePreset === "custom" && (
+              <div className="flex items-center gap-1">
+                <NumInput value={changeRateMin} onChange={setChangeRateMin} placeholder="-10" width="w-16" />
+                <span className="text-xs text-gray-400">~</span>
+                <NumInput value={changeRateMax} onChange={setChangeRateMax} placeholder="+10" width="w-16" />
+                <span className="text-xs text-gray-400">%</span>
+              </div>
+            )}
           </div>
 
           {/* 거래량 최소 (A: 신규) */}
@@ -400,41 +400,41 @@ export default function ScreenerPage() {
 
         {/* 행 3: 재무 조건 */}
         <div className="space-y-3 pt-3 border-t border-gray-100">
-          <div className="flex items-center gap-3">
-            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">재무 조건</p>
-            {fin && fin.count > 0 && (
-              <span className="text-[11px] text-gray-400">{fin.count}개 종목 재무 데이터 보유</span>
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-4">
+          {/* 헤더 + 영업이익 흑자만 토글 (우측) */}
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <div className="flex items-center gap-3">
+              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">재무 조건</p>
+              {fin && fin.count > 0 && (
+                <span className="text-[11px] text-gray-400">{fin.count}개 종목 재무 데이터 보유</span>
+              )}
+            </div>
             {/* 영업이익 흑자 토글 (A: 신규) */}
             <label className="flex items-center gap-2 cursor-pointer">
               <div onClick={() => setProfitableOnly((v) => !v)}
                 className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${profitableOnly ? "bg-emerald-500" : "bg-gray-400"}`}>
                 <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${profitableOnly ? "translate-x-4" : "translate-x-0.5"}`} />
               </div>
-              <span className="text-xs font-medium text-gray-700">영업이익 흑자만</span>
+              <span className="text-xs font-medium text-gray-700 whitespace-nowrap">영업이익 흑자만</span>
             </label>
+          </div>
 
-            {/* 매출 규모 (A: 신규) */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500 whitespace-nowrap">매출 규모</span>
-              <div className="flex flex-wrap gap-1 rounded-xl">
-                {[
-                  { label: "제한 없음", val: "" },
-                  { label: "1천억+",   val: "1000" },
-                  { label: "1조+",     val: "10000" },
-                  { label: "10조+",    val: "100000" },
-                ].map(({ label, val }) => (
-                  <button key={val} onClick={() => setRevenueMin(val)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
-                      revenueMin === val ? "bg-blue-500 text-white border border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border border-gray-300 hover:bg-gray-300 hover:text-gray-900"
-                    }`}>
-                    {label}
-                  </button>
-                ))}
-              </div>
+          {/* 매출 규모 (자체 줄) */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-gray-500 whitespace-nowrap shrink-0">매출 규모</span>
+            <div className="flex flex-wrap gap-1 rounded-xl">
+              {[
+                { label: "제한 없음", val: "" },
+                { label: "1천억+",   val: "1000" },
+                { label: "1조+",     val: "10000" },
+                { label: "10조+",    val: "100000" },
+              ].map(({ label, val }) => (
+                <button key={val} onClick={() => setRevenueMin(val)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                    revenueMin === val ? "bg-blue-500 text-white border border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border border-gray-300 hover:bg-gray-300 hover:text-gray-900"
+                  }`}>
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
 
