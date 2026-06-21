@@ -295,7 +295,7 @@ export default function ScreenerPage() {
       {/* ── 필터 패널 ── */}
       <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
 
-        {/* 행 1: 시장 · 업종 · 정렬 */}
+        {/* 행 1: 시장 */}
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
             <span className="text-xs font-medium text-gray-500">시장</span>
@@ -308,6 +308,10 @@ export default function ScreenerPage() {
               ))}
             </div>
           </div>
+        </div>
+
+        {/* 행 1b: 업종 · 정렬 (간격 최소) */}
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2">
             <span className="text-xs font-medium text-gray-500">업종</span>
             <select value={sector} onChange={(e) => setSector(e.target.value)}
@@ -316,7 +320,7 @@ export default function ScreenerPage() {
               {sectors.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-2">
             <span className="text-xs font-medium text-gray-500">정렬</span>
             <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortKey)}
               className="border border-gray-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white">
