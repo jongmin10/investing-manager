@@ -210,7 +210,7 @@ export default function WatchlistPage() {
                   {/* 종목명 */}
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-gray-800 truncate">{item.name}</span>
+                      <span className="text-sm font-semibold text-gray-800 break-words">{item.name}</span>
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
                         item.market === "KOSPI" ? "bg-blue-50 text-blue-600" : "bg-emerald-50 text-emerald-600"
                       }`}>{item.market}</span>
