@@ -223,7 +223,10 @@ export default function ScreenerPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">종목 스크리너</h1>
-          <p className="text-sm text-gray-400 mt-0.5">코스피·코스닥 종목 중 조건에 맞는 매수 후보를 검색합니다.</p>
+          <p className="text-sm text-gray-400 mt-0.5">조건에 맞는 매수 후보를 검색합니다.</p>
+          <span className="inline-flex items-center gap-1 mt-1.5 text-[11px] font-semibold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full">
+            📊 수집 대상 · 코스피·코스닥 시총 상위 200개
+          </span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {result && (
