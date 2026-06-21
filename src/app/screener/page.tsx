@@ -302,7 +302,7 @@ export default function ScreenerPage() {
             <div className="flex flex-wrap gap-1 rounded-xl">
               {MARKET_OPTIONS.map(({ key, label }) => (
                 <button key={key} onClick={() => setMarket(key)}
-                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${market === key ? "bg-blue-500 text-white border border-blue-500 shadow-sm" : "bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200 hover:text-gray-900"}`}>
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${market === key ? "bg-blue-500 text-white border border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border border-gray-300 hover:bg-gray-300 hover:text-gray-900"}`}>
                   {label}
                 </button>
               ))}
@@ -360,7 +360,7 @@ export default function ScreenerPage() {
                 {RATE_PRESETS.map(({ key, label }) => (
                   <button key={key} onClick={() => handleRatePreset(key)}
                     className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
-                      ratePreset === key ? "bg-blue-500 text-white border border-blue-500 shadow-sm" : "bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200 hover:text-gray-900"
+                      ratePreset === key ? "bg-blue-500 text-white border border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border border-gray-300 hover:bg-gray-300 hover:text-gray-900"
                     }`}>
                     {label}
                   </button>
@@ -389,7 +389,7 @@ export default function ScreenerPage() {
               ].map(({ label, val }) => (
                 <button key={val} onClick={() => setVolumeMin(val)}
                   className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                    volumeMin === val ? "bg-blue-500 text-white border border-blue-500 shadow-sm" : "bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200 hover:text-gray-900"
+                    volumeMin === val ? "bg-blue-500 text-white border border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border border-gray-300 hover:bg-gray-300 hover:text-gray-900"
                   }`}>
                   {label}
                 </button>
@@ -429,7 +429,7 @@ export default function ScreenerPage() {
                 ].map(({ label, val }) => (
                   <button key={val} onClick={() => setRevenueMin(val)}
                     className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
-                      revenueMin === val ? "bg-blue-500 text-white border border-blue-500 shadow-sm" : "bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200 hover:text-gray-900"
+                      revenueMin === val ? "bg-blue-500 text-white border border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border border-gray-300 hover:bg-gray-300 hover:text-gray-900"
                     }`}>
                     {label}
                   </button>
