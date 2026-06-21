@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { kstDateStr, kstDayRange } from "./kst";
 
 const YF_HEADERS = {
   "User-Agent":
@@ -24,6 +25,7 @@ export interface StockQuote {
   cnsEps:        number | null; // NAVER _cns_eps  (추정 EPS, 원)
   pbr:           number | null; // NAVER _pbr
   dividendYield: number | null; // NAVER _dvr      (배당수익률 %)
+  sector:        string | null; // NAVER 업종 (동적 유니버스 신규 종목 보강용)
 }
 
 export interface CollectStocksResult {
@@ -44,28 +46,32 @@ const NAVER_HEADERS = {
 // NAVER Finance HTML에서 PER·PBR 파싱 (한국 주식 전용)
 async function fetchNaverValuation(code: string): Promise<{
   per: number | null; cnsPer: number | null; cnsEps: number | null;
-  pbr: number | null; dividendYield: number | null;
+  pbr: number | null; dividendYield: number | null; sector: string | null;
 }> {
+  const empty = { per: null, cnsPer: null, cnsEps: null, pbr: null, dividendYield: null, sector: null };
   try {
     const res = await fetch(`https://finance.naver.com/item/main.naver?code=${code}`, {
       headers: NAVER_HEADERS,
       signal: AbortSignal.timeout(10_000),
     });
-    if (!res.ok) return { per: null, cnsPer: null, cnsEps: null, pbr: null, dividendYield: null };
+    if (!res.ok) return empty;
     const html = await res.text();
     const parse = (id: string) => {
       const m = html.match(new RegExp(`id="${id}"[^>]*>([\\d,\\.]+)<`));
       return m ? parseFloat(m[1].replace(/,/g, "")) : null;
     };
+    // 업종(추가 요청 없이 같은 페이지에서 파싱)
+    const sm = html.match(/sise_group_detail\.naver\?type=upjong&no=\d+["'][^>]*>\s*([^<]+?)\s*</);
     return {
       per:           parse("_per"),
       cnsPer:        parse("_cns_per"),
       cnsEps:        parse("_cns_eps"),
       pbr:           parse("_pbr"),
       dividendYield: parse("_dvr"),
+      sector:        sm ? sm[1].replace(/\s+/g, " ").trim() : null,
     };
   } catch {
-    return { per: null, cnsPer: null, cnsEps: null, pbr: null, dividendYield: null };
+    return empty;
   }
 }
 
@@ -78,7 +84,7 @@ async function fetchOne(symbol: string): Promise<StockQuote | null> {
   const [chartRes, naver] = await Promise.all([
     fetch(chartUrl, { headers: YF_HEADERS, cache: "no-store", signal: AbortSignal.timeout(10_000) })
       .catch(() => null),
-    isKorean ? fetchNaverValuation(naverCode) : Promise.resolve({ per: null, cnsPer: null, cnsEps: null, pbr: null, dividendYield: null }),
+    isKorean ? fetchNaverValuation(naverCode) : Promise.resolve({ per: null, cnsPer: null, cnsEps: null, pbr: null, dividendYield: null, sector: null }),
   ]);
 
   if (!chartRes?.ok) return null;
@@ -116,6 +122,7 @@ async function fetchOne(symbol: string): Promise<StockQuote | null> {
     cnsEps:        naver.cnsEps,
     pbr:           naver.pbr,
     dividendYield: naver.dividendYield,
+    sector:        naver.sector,
   };
 }
 
@@ -130,16 +137,22 @@ export async function collectAllStocks(
 ): Promise<CollectStocksResult> {
   const start = Date.now();
 
-  const allStocks = await prisma.stock.findMany({ select: { id: true, yahooSymbol: true }, orderBy: { id: "asc" } });
+  // 수집 대상 = 현재 시총 유니버스(rank 보유) 우선, 없으면 전체(초기 시드 호환)
+  const ranked = await prisma.stock.findMany({
+    where: { rank: { not: null } }, select: { id: true, yahooSymbol: true, sector: true }, orderBy: { rank: "asc" },
+  });
+  const allStocks = ranked.length > 0
+    ? ranked
+    : await prisma.stock.findMany({ select: { id: true, yahooSymbol: true, sector: true }, orderBy: { id: "asc" } });
   const stocks = options?.offset != null || options?.limit != null
     ? allStocks.slice(options.offset ?? 0, options.limit ? (options.offset ?? 0) + options.limit : undefined)
     : allStocks;
   const total  = stocks.length;
+  const sectorById = new Map(stocks.map((s) => [s.id, s.sector]));
 
   const today    = new Date();
-  const todayStr = today.toISOString().slice(0, 10);
-  const dayStart = new Date(todayStr + "T00:00:00.000Z");
-  const dayEnd   = new Date(todayStr + "T23:59:59.999Z");
+  const todayStr = kstDateStr(today);            // KST 기준 오늘
+  const { start: dayStart, end: dayEnd } = kstDayRange(todayStr);
 
   const failed: string[] = [];
   let updated = 0;
@@ -184,6 +197,11 @@ export async function collectAllStocks(
         pbr:           quote.pbr,
         dividendYield: quote.dividendYield,
       };
+
+      // 업종 보강: 새로 파싱한 sector가 있고 기존과 다르면 Stock.sector 갱신 (추가 요청 없음)
+      if (quote.sector && quote.sector !== sectorById.get(stock.id)) {
+        writes.push(prisma.stock.update({ where: { id: stock.id }, data: { sector: quote.sector } }));
+      }
 
       const existing = existingMap.get(stock.id);
 
@@ -237,14 +255,9 @@ export async function getCollectStatus() {
     prisma.stockSnapshot.findFirst({ orderBy: { date: "desc" } }),
   ]);
 
-  const today    = new Date().toISOString().slice(0, 10);
+  const { start, end } = kstDayRange(kstDateStr()); // KST 기준 오늘
   const todayCount = await prisma.stockSnapshot.count({
-    where: {
-      date: {
-        gte: new Date(today + "T00:00:00.000Z"),
-        lte: new Date(today + "T23:59:59.999Z"),
-      },
-    },
+    where: { date: { gte: start, lte: end } },
   });
 
   return { stockCount, snapshotCount, todayCount, lastUpdated: latestSnapshot?.date ?? null, isUpToDate: todayCount > 0 };

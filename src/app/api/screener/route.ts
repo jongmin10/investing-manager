@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { kstDateStr, kstDayRange } from "@/lib/kst";
 
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
@@ -25,9 +26,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ items: [], total: 0, sectors: [], collectedAt: null, isUpToDate: false, financialStatus: null });
   }
 
-  const latestStr = latest.date.toISOString().slice(0, 10);
-  const dayStart  = new Date(latestStr + "T00:00:00.000Z");
-  const dayEnd    = new Date(latestStr + "T23:59:59.999Z");
+  const latestStr = kstDateStr(latest.date);            // KST 기준 최신 수집일
+  const { start: dayStart, end: dayEnd } = kstDayRange(latestStr);
 
   const sectorRows = await prisma.stock.findMany({
     select: { sector: true }, distinct: ["sector"],
@@ -144,6 +144,6 @@ export async function GET(req: NextRequest) {
     sectors,
     financialStatus,
     collectedAt:  latest.date,
-    isUpToDate:   latestStr === new Date().toISOString().slice(0, 10),
+    isUpToDate:   latestStr === kstDateStr(),
   });
 }

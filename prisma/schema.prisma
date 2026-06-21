@@ -143,9 +143,13 @@ model Stock {
   sector      String?                     // 업종명
   yahooSymbol String                      // Yahoo Finance 심볼 (e.g. "005930.KS")
   dartCode    String?                     // DART 고유번호 (재무데이터 수집용)
+  marketCap   Float?                      // 시가총액(억) — 동적 유니버스 갱신 시 기록
+  rank        Int?                        // 시총 순위 (1=최상위). 수집 대상/정렬 기준
 
   snapshots  StockSnapshot[]
   financials StockFinancial[]
+
+  @@index([rank])
 }
 
 // 스크리너: 일별 주가 스냅샷
