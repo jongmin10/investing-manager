@@ -232,7 +232,7 @@ export default function CalculatorPage() {
 
       {/* ── 적립식 / 목표 역산 ── */}
       {(isAccum || isTarget) && (
-        <div className="grid grid-cols-1 md:grid-cols-[5fr_7fr] gap-3">
+        <div className="flex flex-col gap-3 md:grid md:grid-cols-[5fr_7fr]">
           <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
             <h2 className="font-semibold text-gray-900">
               {isAccum ? "투자 설정" : "목표 설정"}
@@ -311,7 +311,7 @@ export default function CalculatorPage() {
 
       {/* ── 세액공제 계산기 ── */}
       {isTax && (
-        <div className="grid grid-cols-1 md:grid-cols-[5fr_7fr] gap-3">
+        <div className="flex flex-col gap-3 md:grid md:grid-cols-[5fr_7fr]">
           <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-5">
             <h2 className="font-semibold text-gray-900">납입 정보</h2>
 
@@ -411,7 +411,7 @@ export default function CalculatorPage() {
 
       {/* ── 연금 수령 시뮬레이션 ── */}
       {isPension && (
-        <div className="grid grid-cols-1 md:grid-cols-[5fr_7fr] gap-3">
+        <div className="flex flex-col gap-3 md:grid md:grid-cols-[5fr_7fr]">
           {/* 왼쪽: 입력 */}
           <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
             <h2 className="font-semibold text-gray-900">수령 조건 설정</h2>
