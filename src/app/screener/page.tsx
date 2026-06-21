@@ -302,7 +302,7 @@ export default function ScreenerPage() {
             <div className="flex flex-wrap gap-1 rounded-xl">
               {MARKET_OPTIONS.map(({ key, label }) => (
                 <button key={key} onClick={() => setMarket(key)}
-                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${market === key ? "bg-blue-500 text-white border border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border border-gray-300 hover:bg-gray-300 hover:text-gray-900"}`}>
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${market === key ? "bg-gray-200 text-blue-600 border-2 border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border-2 border-transparent hover:border-gray-300 hover:text-gray-900"}`}>
                   {label}
                 </button>
               ))}
@@ -360,7 +360,7 @@ export default function ScreenerPage() {
                 {RATE_PRESETS.map(({ key, label }) => (
                   <button key={key} onClick={() => handleRatePreset(key)}
                     className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
-                      ratePreset === key ? "bg-blue-500 text-white border border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border border-gray-300 hover:bg-gray-300 hover:text-gray-900"
+                      ratePreset === key ? "bg-gray-200 text-blue-600 border-2 border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border-2 border-transparent hover:border-gray-300 hover:text-gray-900"
                     }`}>
                     {label}
                   </button>
@@ -389,7 +389,7 @@ export default function ScreenerPage() {
               ].map(({ label, val }) => (
                 <button key={val} onClick={() => setVolumeMin(val)}
                   className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                    volumeMin === val ? "bg-blue-500 text-white border border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border border-gray-300 hover:bg-gray-300 hover:text-gray-900"
+                    volumeMin === val ? "bg-gray-200 text-blue-600 border-2 border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border-2 border-transparent hover:border-gray-300 hover:text-gray-900"
                   }`}>
                   {label}
                 </button>
@@ -429,7 +429,7 @@ export default function ScreenerPage() {
                 ].map(({ label, val }) => (
                   <button key={val} onClick={() => setRevenueMin(val)}
                     className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
-                      revenueMin === val ? "bg-blue-500 text-white border border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border border-gray-300 hover:bg-gray-300 hover:text-gray-900"
+                      revenueMin === val ? "bg-gray-200 text-blue-600 border-2 border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border-2 border-transparent hover:border-gray-300 hover:text-gray-900"
                     }`}>
                     {label}
                   </button>
@@ -487,7 +487,7 @@ export default function ScreenerPage() {
           <div className="min-w-[760px]">
 
         {/* 컬럼 헤더 */}
-        <div className="grid grid-cols-[2fr_1.6fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-2 bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+        <div className="grid grid-cols-[1.4fr_1.4fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-2 bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
           <span>종목</span>
           <span className="text-right">현재가</span>
           <span className="text-right">등락률</span>
@@ -501,7 +501,7 @@ export default function ScreenerPage() {
         {loading && (
           <div className="divide-y divide-gray-50">
             {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="grid grid-cols-[2fr_1.6fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-3.5 animate-pulse">
+              <div key={i} className="grid grid-cols-[1.4fr_1.4fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-3.5 animate-pulse">
                 <div className="h-4 bg-gray-100 rounded w-3/4" />
                 <div className="h-4 bg-gray-100 rounded" />
                 <div className="h-4 bg-gray-100 rounded w-3/4 ml-auto" />
@@ -535,7 +535,7 @@ export default function ScreenerPage() {
 
               return (
                 <div key={item.id}
-                  className="grid grid-cols-[2fr_1.6fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-3.5 hover:bg-gray-50/70 transition-colors items-center">
+                  className="grid grid-cols-[1.4fr_1.4fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-3.5 hover:bg-gray-50/70 transition-colors items-center">
 
                   {/* 종목명 */}
                   <div className="min-w-0">

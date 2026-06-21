@@ -156,7 +156,7 @@ export default function WatchlistPage() {
           <div className="min-w-[760px]">
 
         {/* 컬럼 헤더 */}
-        <div className="grid grid-cols-[2fr_1.6fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-2 bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+        <div className="grid grid-cols-[1.4fr_1.4fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-2 bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
           <span>종목</span>
           <span className="text-right">현재가</span>
           <span className="text-right">등락률</span>
@@ -170,7 +170,7 @@ export default function WatchlistPage() {
         {loading && (
           <div className="divide-y divide-gray-50">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="grid grid-cols-[2fr_1.6fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-3.5 animate-pulse">
+              <div key={i} className="grid grid-cols-[1.4fr_1.4fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-3.5 animate-pulse">
                 <div className="h-4 bg-gray-100 rounded w-3/4" />
                 <div className="h-4 bg-gray-100 rounded" />
                 <div className="h-4 bg-gray-100 rounded w-3/4 ml-auto" />
@@ -205,7 +205,7 @@ export default function WatchlistPage() {
 
               return (
                 <div key={item.id}
-                  className="grid grid-cols-[2fr_1.6fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-3.5 hover:bg-gray-50/70 transition-colors items-center">
+                  className="grid grid-cols-[1.4fr_1.4fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-3.5 hover:bg-gray-50/70 transition-colors items-center">
 
                   {/* 종목명 */}
                   <div className="min-w-0">
