@@ -484,10 +484,10 @@ export default function ScreenerPage() {
           <div className={`absolute left-0 top-0 bottom-0 w-10 bg-gradient-to-r from-white to-transparent z-10 pointer-events-none transition-opacity duration-200 ${showLeftFade ? "opacity-100" : "opacity-0"}`} />
           <div className={`absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-white to-transparent z-10 pointer-events-none transition-opacity duration-200 ${showRightFade ? "opacity-100" : "opacity-0"}`} />
         <div className="overflow-x-auto scrollbar-table" ref={tableRef} onScroll={checkScrollFades}>
-          <div className="min-w-[680px]">
+          <div className="min-w-[760px]">
 
         {/* 컬럼 헤더 */}
-        <div className="grid grid-cols-[2fr_1.2fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-2 bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+        <div className="grid grid-cols-[2fr_1.6fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-2 bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
           <span>종목</span>
           <span className="text-right">현재가</span>
           <span className="text-right">등락률</span>
@@ -501,7 +501,7 @@ export default function ScreenerPage() {
         {loading && (
           <div className="divide-y divide-gray-50">
             {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="grid grid-cols-[2fr_1.2fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-3.5 animate-pulse">
+              <div key={i} className="grid grid-cols-[2fr_1.6fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-3.5 animate-pulse">
                 <div className="h-4 bg-gray-100 rounded w-3/4" />
                 <div className="h-4 bg-gray-100 rounded" />
                 <div className="h-4 bg-gray-100 rounded w-3/4 ml-auto" />
@@ -535,7 +535,7 @@ export default function ScreenerPage() {
 
               return (
                 <div key={item.id}
-                  className="grid grid-cols-[2fr_1.2fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-3.5 hover:bg-gray-50/70 transition-colors items-center">
+                  className="grid grid-cols-[2fr_1.6fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-3.5 hover:bg-gray-50/70 transition-colors items-center">
 
                   {/* 종목명 */}
                   <div className="min-w-0">
@@ -553,9 +553,9 @@ export default function ScreenerPage() {
 
                   {/* 현재가 */}
                   <div className="text-right">
-                    <p className="text-sm font-semibold text-gray-800">{fmtPrice(item.price)}</p>
+                    <p className="text-sm font-semibold text-gray-800 whitespace-nowrap">{fmtPrice(item.price)}</p>
                     {item.volume != null && (
-                      <p className="text-[11px] text-gray-400 mt-0.5">{fmtVolume(item.volume)}</p>
+                      <p className="text-[11px] text-gray-400 mt-0.5 whitespace-nowrap">{fmtVolume(item.volume)}</p>
                     )}
                   </div>
 
@@ -570,7 +570,7 @@ export default function ScreenerPage() {
                   <div className="flex flex-col gap-1 items-end">
                     <span className="text-xs font-bold px-2 py-0.5 rounded-full"
                       style={{ color: ratioColor, background: ratioBg }}>{ratio}%</span>
-                    <span className="text-[11px] text-gray-400">고 {fmtPrice(item.high52w)}</span>
+                    <span className="text-[11px] text-gray-400 whitespace-nowrap">고 {fmtPrice(item.high52w)}</span>
                   </div>
 
                   {/* 재무 지표 */}
@@ -622,7 +622,7 @@ export default function ScreenerPage() {
           </div>
         )}
 
-          </div>{/* min-w-[680px] */}
+          </div>{/* min-w-[760px] */}
         </div>{/* overflow-x-auto scrollbar-table */}
         </div>{/* relative fade wrapper */}
       </div>
