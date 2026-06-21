@@ -339,7 +339,7 @@ export default function ScreenerPage() {
             {/* 52주 신고가 */}
             <div className="flex items-center gap-3">
               <div onClick={() => setUse52w((v) => !v)}
-                className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${use52w ? "bg-blue-500" : "bg-gray-300"}`}>
+                className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${use52w ? "bg-blue-500" : "bg-gray-400"}`}>
                 <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${use52w ? "translate-x-4" : "translate-x-0.5"}`} />
               </div>
               <span className="text-xs font-medium text-gray-700 cursor-pointer" onClick={() => setUse52w((v) => !v)}>52주 신고가</span>
@@ -411,7 +411,7 @@ export default function ScreenerPage() {
             {/* 영업이익 흑자 토글 (A: 신규) */}
             <label className="flex items-center gap-2 cursor-pointer">
               <div onClick={() => setProfitableOnly((v) => !v)}
-                className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${profitableOnly ? "bg-emerald-500" : "bg-gray-300"}`}>
+                className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${profitableOnly ? "bg-emerald-500" : "bg-gray-400"}`}>
                 <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${profitableOnly ? "translate-x-4" : "translate-x-0.5"}`} />
               </div>
               <span className="text-xs font-medium text-gray-700">영업이익 흑자만</span>
