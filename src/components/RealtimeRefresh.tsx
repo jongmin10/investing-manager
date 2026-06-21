@@ -67,10 +67,10 @@ export default function RealtimeRefresh({ lastUpdated }: Props) {
   const isLoading = status === "loading";
 
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className="flex flex-col items-end gap-1 shrink-0">
       <div className="flex items-center gap-2">
         {/* 마지막 업데이트 시각 */}
-        <span className="text-xs text-gray-400">
+        <span className="text-xs text-gray-400 whitespace-nowrap">
           {timeAgo ? `업데이트: ${timeAgo}` : ""}
         </span>
 
@@ -78,7 +78,7 @@ export default function RealtimeRefresh({ lastUpdated }: Props) {
         <button
           onClick={refresh}
           disabled={isLoading}
-          className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-gray-200 rounded-full
+          className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-gray-200 rounded-full whitespace-nowrap shrink-0
             hover:border-blue-300 hover:text-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           title="실시간 시세 새로고침"
         >

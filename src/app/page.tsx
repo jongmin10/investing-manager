@@ -70,9 +70,9 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* 페이지 헤더 */}
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">경제지표 대시보드</h1>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">경제지표 대시보드</h1>
           <p className="text-sm text-gray-500 mt-1">
             퇴직연금(DC/IRP) 운용에 필요한 핵심 경제지표를 한눈에 확인하세요.
           </p>

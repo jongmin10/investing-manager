@@ -103,7 +103,7 @@ function SliderInput({
             onChange={(e) => onChange(Math.min(max, Math.max(min, Number(e.target.value))))}
             className="w-24 border border-gray-200 rounded-lg px-2 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-300"
           />
-          <span className="text-sm text-gray-500 w-6">{unit}</span>
+          <span className="text-sm text-gray-500 whitespace-nowrap shrink-0">{unit}</span>
         </div>
       </div>
       <input
@@ -324,7 +324,7 @@ export default function CalculatorPage() {
                     onChange={(e) => setGrossIncome(Math.max(1000, Number(e.target.value)))}
                     className="w-24 border border-gray-200 rounded-lg px-2 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-300"
                   />
-                  <span className="text-sm text-gray-500 w-6">만원</span>
+                  <span className="text-sm text-gray-500 whitespace-nowrap shrink-0">만원</span>
                 </div>
               </div>
               <input type="range" min={1000} max={20000} step={100} value={Math.min(grossIncome, 20000)} onChange={(e) => setGrossIncome(Number(e.target.value))} className="w-full accent-blue-500" />
