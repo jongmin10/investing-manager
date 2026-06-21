@@ -302,7 +302,7 @@ export default function ScreenerPage() {
             <div className="flex flex-wrap gap-1 rounded-xl">
               {MARKET_OPTIONS.map(({ key, label }) => (
                 <button key={key} onClick={() => setMarket(key)}
-                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${market === key ? "bg-gray-200 text-blue-600 border-2 border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border-2 border-transparent hover:border-gray-300 hover:text-gray-900"}`}>
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${market === key ? "bg-blue-500 text-white border border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border border-gray-300 hover:bg-gray-300 hover:text-gray-900"}`}>
                   {label}
                 </button>
               ))}
@@ -339,7 +339,7 @@ export default function ScreenerPage() {
             {/* 52주 신고가 */}
             <div className="flex items-center gap-3">
               <div onClick={() => setUse52w((v) => !v)}
-                className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${use52w ? "bg-blue-500" : "bg-gray-200"}`}>
+                className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${use52w ? "bg-blue-500" : "bg-gray-300"}`}>
                 <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${use52w ? "translate-x-4" : "translate-x-0.5"}`} />
               </div>
               <span className="text-xs font-medium text-gray-700 cursor-pointer" onClick={() => setUse52w((v) => !v)}>52주 신고가</span>
@@ -360,7 +360,7 @@ export default function ScreenerPage() {
                 {RATE_PRESETS.map(({ key, label }) => (
                   <button key={key} onClick={() => handleRatePreset(key)}
                     className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
-                      ratePreset === key ? "bg-gray-200 text-blue-600 border-2 border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border-2 border-transparent hover:border-gray-300 hover:text-gray-900"
+                      ratePreset === key ? "bg-blue-500 text-white border border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border border-gray-300 hover:bg-gray-300 hover:text-gray-900"
                     }`}>
                     {label}
                   </button>
@@ -389,7 +389,7 @@ export default function ScreenerPage() {
               ].map(({ label, val }) => (
                 <button key={val} onClick={() => setVolumeMin(val)}
                   className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                    volumeMin === val ? "bg-gray-200 text-blue-600 border-2 border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border-2 border-transparent hover:border-gray-300 hover:text-gray-900"
+                    volumeMin === val ? "bg-blue-500 text-white border border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border border-gray-300 hover:bg-gray-300 hover:text-gray-900"
                   }`}>
                   {label}
                 </button>
@@ -411,7 +411,7 @@ export default function ScreenerPage() {
             {/* 영업이익 흑자 토글 (A: 신규) */}
             <label className="flex items-center gap-2 cursor-pointer">
               <div onClick={() => setProfitableOnly((v) => !v)}
-                className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${profitableOnly ? "bg-emerald-500" : "bg-gray-200"}`}>
+                className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${profitableOnly ? "bg-emerald-500" : "bg-gray-300"}`}>
                 <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${profitableOnly ? "translate-x-4" : "translate-x-0.5"}`} />
               </div>
               <span className="text-xs font-medium text-gray-700">영업이익 흑자만</span>
@@ -429,7 +429,7 @@ export default function ScreenerPage() {
                 ].map(({ label, val }) => (
                   <button key={val} onClick={() => setRevenueMin(val)}
                     className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
-                      revenueMin === val ? "bg-gray-200 text-blue-600 border-2 border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border-2 border-transparent hover:border-gray-300 hover:text-gray-900"
+                      revenueMin === val ? "bg-blue-500 text-white border border-blue-500 shadow-sm" : "bg-gray-200 text-gray-700 border border-gray-300 hover:bg-gray-300 hover:text-gray-900"
                     }`}>
                     {label}
                   </button>
