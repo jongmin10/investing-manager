@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { mapMissingDartCodes } from "./dart-corp";
 
 // 네이버 금융 시가총액 순위 페이지를 스크랩해 시총 상위 N개 유니버스를 동적 구성한다.
 // 순위가 바뀌어도 수집 직전 자동 갱신되어 항상 최신 top-N을 추적한다.
@@ -60,7 +61,8 @@ async function fetchMarketSumPage(sosok: "0" | "1", page: number): Promise<Scrap
  * - top-N 밖 기존 종목: marketCap·rank null 처리 (수집 대상에서 제외)
  */
 export async function refreshStockUniverse(limit = 200): Promise<{
-  ok: boolean; total: number; created: number; kospi: number; kosdaq: number; error?: string;
+  ok: boolean; total: number; created: number; kospi: number; kosdaq: number;
+  dartMapped?: number; error?: string;
 }> {
   try {
     const PAGES = Math.ceil(limit / 50) + 2; // 페이지당 50행, 여유분 포함
@@ -109,12 +111,16 @@ export async function refreshStockUniverse(limit = 200): Promise<{
       );
     }
 
+    // 신규 종목의 DART corp_code 자동 매핑 (누락 종목 없으면 다운로드 생략)
+    const dart = await mapMissingDartCodes();
+
     return {
       ok: true,
       total:  top.length,
       created,
       kospi:  top.filter((s) => s.market === "KOSPI").length,
       kosdaq: top.filter((s) => s.market === "KOSDAQ").length,
+      dartMapped: dart.mapped,
     };
   } catch (e) {
     return { ok: false, total: 0, created: 0, kospi: 0, kosdaq: 0, error: String(e) };

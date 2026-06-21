@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { mapMissingDartCodes } from "./dart-corp";
 
 const DART_BASE  = "https://opendart.fss.or.kr/api";
 // 동시 처리할 종목 수 (종목당 3개 API 호출 → 최대 CONCURRENCY×3 동시 요청)
@@ -120,6 +121,10 @@ export async function collectAllFinancials(
   if (!key) return { success: false, total: 0, updated: 0, failed: [], noDartCode: 0, duration: 0 };
 
   const start    = Date.now();
+
+  // 첫 배치에서 누락 종목 DART corp_code 자동 매핑 (동적 추가 종목 대응)
+  if (!options?.offset) await mapMissingDartCodes();
+
   const allStocks = await prisma.stock.findMany({ select: { id: true, name: true, dartCode: true }, orderBy: { id: "asc" } });
   const stocks   = options?.offset != null || options?.limit != null
     ? allStocks.slice(options.offset ?? 0, options.limit ? (options.offset ?? 0) + options.limit : undefined)
