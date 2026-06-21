@@ -146,11 +146,20 @@ export async function collectAllStocks(
   let skipped = 0;
   let done    = 0;
 
+  // 오늘 스냅샷을 한 번에 일괄 조회 (종목별 findFirst 제거)
+  const existingSnaps = await prisma.stockSnapshot.findMany({
+    where: { stockId: { in: stocks.map((s) => s.id) }, date: { gte: dayStart, lte: dayEnd } },
+  });
+  const existingMap = new Map(existingSnaps.map((s) => [s.stockId, s]));
+
   // PARALLEL개씩 병렬 처리
   for (let i = 0; i < stocks.length; i += PARALLEL) {
     const batch = stocks.slice(i, i + PARALLEL);
 
     const quotes = await Promise.all(batch.map((s) => fetchOne(s.yahooSymbol)));
+
+    // 배치 내 DB 쓰기를 모아 병렬 실행 (순차 await 제거)
+    const writes: Promise<unknown>[] = [];
 
     for (let j = 0; j < batch.length; j++) {
       const stock = batch[j];
@@ -176,9 +185,7 @@ export async function collectAllStocks(
         dividendYield: quote.dividendYield,
       };
 
-      const existing = await prisma.stockSnapshot.findFirst({
-        where: { stockId: stock.id, date: { gte: dayStart, lte: dayEnd } },
-      });
+      const existing = existingMap.get(stock.id);
 
       if (existing) {
         // 가격 변동이 없어도 per·cnsPer·pbr은 항상 갱신
@@ -188,18 +195,18 @@ export async function collectAllStocks(
           || existing.cnsEps !== quote.cnsEps
           || existing.dividendYield !== quote.dividendYield;
         if (priceChanged || valuationChanged) {
-          await prisma.stockSnapshot.update({
+          writes.push(prisma.stockSnapshot.update({
             where: { id: existing.id },
             data: { ...data, date: today },
-          });
+          }));
           updated++;
         } else {
           skipped++;
         }
       } else {
-        await prisma.stockSnapshot.create({
+        writes.push(prisma.stockSnapshot.create({
           data: { stockId: stock.id, date: today, ...data },
-        });
+        }));
         updated++;
       }
 
@@ -207,6 +214,7 @@ export async function collectAllStocks(
       onProgress?.(done, total);
     }
 
+    if (writes.length > 0) await Promise.all(writes);
     if (i + PARALLEL < stocks.length) await sleep(BATCH_DELAY);
   }
 

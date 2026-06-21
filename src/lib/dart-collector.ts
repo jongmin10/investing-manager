@@ -1,7 +1,10 @@
 import { prisma } from "./prisma";
 
 const DART_BASE  = "https://opendart.fss.or.kr/api";
-const CALL_DELAY = 700;
+// 동시 처리할 종목 수 (종목당 3개 API 호출 → 최대 CONCURRENCY×3 동시 요청)
+const CONCURRENCY = 4;
+// 웨이브(동시 묶음) 간 간격 — DART 부하 분산용
+const WAVE_DELAY  = 300;
 
 const REVENUE_KEYWORDS          = ["매출액", "수익(매출액)", "영업수익", "매출"];
 const REVENUE_FINANCIAL_KEYWORDS = ["이자수익"];   // 금융·보험사 폴백
@@ -128,17 +131,18 @@ export async function collectAllFinancials(
   const now        = new Date();
   const reportYear = now.getMonth() >= 3 ? now.getFullYear() - 1 : now.getFullYear() - 2;
 
-  for (const stock of stocks) {
-    if (!stock.dartCode) { noDartCode++; continue; }
+  // 단일 종목 처리 (API 호출 → 파싱 → upsert)
+  async function processOne(stock: { id: string; dartCode: string | null }): Promise<"updated" | "failed" | "noDart"> {
+    if (!stock.dartCode) return "noDart";
 
-    // 3개 API 병렬 호출로 시간 단축
+    // 3개 API 병렬 호출
     const [items, alotItems, totalShares] = await Promise.all([
       fetchYearlyFinancials(stock.dartCode, reportYear),
       fetchAlotMatter(stock.dartCode, reportYear),
       fetchShares(stock.dartCode, reportYear),
     ]);
 
-    if (items.length === 0) { failed.push(stock.id); await sleep(300); continue; }
+    if (items.length === 0) return "failed";
 
     // ── 손익계산서 ────────────────────────────────────────
     // 금융·보험사는 "매출액" 대신 "이자수익"으로 폴백
@@ -173,28 +177,35 @@ export async function collectAllFinancials(
     const dps = dpsRow ? toWon(dpsRow.thstrm) : null;
 
     const period = `${reportYear}A`;
+    const fields = {
+      revenue, operatingProfit: opProfit, netIncome,
+      revenueGrowth: growth(revenue, revPrev),
+      opGrowth:      growth(opProfit, opPrev),
+      netGrowth:     growth(netIncome, netPrev),
+      opMargin, eps, bps, dps,
+    };
 
     await prisma.stockFinancial.upsert({
       where:  { stockId_period: { stockId: stock.id, period } },
-      create: {
-        stockId: stock.id, period,
-        revenue, operatingProfit: opProfit, netIncome,
-        revenueGrowth: growth(revenue, revPrev),
-        opGrowth:      growth(opProfit, opPrev),
-        netGrowth:     growth(netIncome, netPrev),
-        opMargin, eps, bps, dps,
-      },
-      update: {
-        revenue, operatingProfit: opProfit, netIncome,
-        revenueGrowth: growth(revenue, revPrev),
-        opGrowth:      growth(opProfit, opPrev),
-        netGrowth:     growth(netIncome, netPrev),
-        opMargin, eps, bps, dps,
-      },
+      create: { stockId: stock.id, period, ...fields },
+      update: fields,
     });
 
-    updated++;
-    await sleep(CALL_DELAY);
+    return "updated";
+  }
+
+  // CONCURRENCY개씩 동시 처리 (종목당 700ms 순차 대기 제거)
+  for (let i = 0; i < stocks.length; i += CONCURRENCY) {
+    const wave = stocks.slice(i, i + CONCURRENCY);
+    const statuses = await Promise.all(
+      wave.map((stock) => processOne(stock).catch(() => "failed" as const))
+    );
+    statuses.forEach((status, k) => {
+      if (status === "updated")      updated++;
+      else if (status === "noDart")  noDartCode++;
+      else                            failed.push(wave[k].id);
+    });
+    if (i + CONCURRENCY < stocks.length) await sleep(WAVE_DELAY);
   }
 
   return { success: updated > 0, total, updated, failed, noDartCode, duration: Date.now() - start };

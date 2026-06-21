@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 
 let collecting = false;
 
-// Vercel 타임아웃 대응: 20개씩 배치 처리 (종목당 ~2.5초 × 20 = ~50초)
+// Vercel 타임아웃 대응: 20개씩 배치 처리 (동시 4종목 처리로 배치당 ~5초)
 export async function POST(req: NextRequest) {
   if (!process.env.DART_API_KEY) {
     return NextResponse.json(
