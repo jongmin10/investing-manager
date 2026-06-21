@@ -285,7 +285,7 @@ export default function ScreenerPage() {
             <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
               {MARKET_OPTIONS.map(({ key, label }) => (
                 <button key={key} onClick={() => setMarket(key)}
-                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${market === key ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${market === key ? "bg-white text-blue-600 shadow-sm" : "bg-white/50 text-gray-700 hover:bg-white hover:text-gray-900"}`}>
                   {label}
                 </button>
               ))}
@@ -343,7 +343,7 @@ export default function ScreenerPage() {
                 {RATE_PRESETS.map(({ key, label }) => (
                   <button key={key} onClick={() => handleRatePreset(key)}
                     className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
-                      ratePreset === key ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                      ratePreset === key ? "bg-white text-blue-600 shadow-sm" : "bg-white/50 text-gray-700 hover:bg-white hover:text-gray-900"
                     }`}>
                     {label}
                   </button>
@@ -372,7 +372,7 @@ export default function ScreenerPage() {
               ].map(({ label, val }) => (
                 <button key={val} onClick={() => setVolumeMin(val)}
                   className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                    volumeMin === val ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                    volumeMin === val ? "bg-white text-blue-600 shadow-sm" : "bg-white/50 text-gray-700 hover:bg-white hover:text-gray-900"
                   }`}>
                   {label}
                 </button>
@@ -412,7 +412,7 @@ export default function ScreenerPage() {
                 ].map(({ label, val }) => (
                   <button key={val} onClick={() => setRevenueMin(val)}
                     className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
-                      revenueMin === val ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                      revenueMin === val ? "bg-white text-blue-600 shadow-sm" : "bg-white/50 text-gray-700 hover:bg-white hover:text-gray-900"
                     }`}>
                     {label}
                   </button>
