@@ -109,7 +109,7 @@ export default function GuruDetailPage() {
   const changes = data?.changes;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+    <div className="space-y-6">
       {/* 브레드크럼 */}
       <div className="flex items-center gap-2 text-sm text-gray-400">
         <Link href="/gurus" className="hover:text-gray-600 transition-colors">투자 대가 13F</Link>
@@ -211,7 +211,7 @@ export default function GuruDetailPage() {
 
       {/* 변동 요약 카드 */}
       {changes && (
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
             { key: "new",     label: "신규 편입", color: "emerald", val: changes.new     },
             { key: "added",   label: "추가 매수", color: "blue",    val: changes.added   },
@@ -262,6 +262,10 @@ export default function GuruDetailPage() {
             </span>
             <span>{data.holdings.length}개 종목</span>
           </div>
+
+          {/* 가로 스크롤 래퍼 */}
+          <div className="overflow-x-auto">
+            <div className="min-w-[560px]">
 
           {/* 컬럼 헤더 */}
           <div className="grid grid-cols-[2rem_1fr_2fr_1fr_1fr_1fr_5rem] gap-x-3 px-5 py-2 bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
@@ -322,6 +326,9 @@ export default function GuruDetailPage() {
               );
             })}
           </div>
+
+            </div>{/* min-w-[560px] */}
+          </div>{/* overflow-x-auto */}
         </div>
       )}
 

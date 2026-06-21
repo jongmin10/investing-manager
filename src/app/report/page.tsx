@@ -71,7 +71,7 @@ export default function ReportPage() {
   const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6">
       {/* 헤더 */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -130,14 +130,14 @@ export default function ReportPage() {
 
           {/* 시장 지수 */}
           <div className="bg-white border border-gray-200 rounded-xl px-4 py-2.5 space-y-1.5">
-            <div className="grid grid-cols-[1.2rem_1fr_1fr_1fr] gap-x-3 items-center">
-              <span className="text-xs text-gray-300">🇰🇷</span>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="text-xs text-gray-300 flex-shrink-0">🇰🇷</span>
               <IndexChip label="KOSPI"  value={report.kospi}  change={report.kospiChange} />
               <IndexChip label="KOSDAQ" value={report.kosdaq} change={report.kosdaqChange} />
               <IndexChip label="환율"   value={report.krwUsd} change={report.krwUsdChange} unit="원" />
             </div>
-            <div className="grid grid-cols-[1.2rem_1fr_1fr_1fr] gap-x-3 items-center">
-              <span className="text-xs text-gray-300">🇺🇸</span>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="text-xs text-gray-300 flex-shrink-0">🇺🇸</span>
               <IndexChip label="S&P500" value={report.sp500}  change={report.sp500Change} />
               <IndexChip label="VIX"    value={report.vix} />
               <IndexChip label="10Y"    value={report.us10y}  change={report.us10yChange} unit="%" />

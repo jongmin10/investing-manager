@@ -57,7 +57,7 @@ export default function ReportDatePage() {
 
   if (notFound || !report) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-16 text-center">
+      <div className="max-w-4xl mx-auto py-8 text-center">
         <p className="text-gray-400 text-lg">해당 날짜의 리포트가 없습니다.</p>
         <Link href="/report/history" className="mt-4 inline-block text-blue-500 hover:underline text-sm">← 히스토리로 돌아가기</Link>
       </div>
@@ -65,7 +65,7 @@ export default function ReportDatePage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6">
       {/* 브레드크럼 */}
       <div className="flex items-center gap-2 text-sm text-gray-400">
         <Link href="/report" className="hover:text-gray-600 transition-colors">시황 리포트</Link>

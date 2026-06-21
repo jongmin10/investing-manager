@@ -454,6 +454,10 @@ export default function ScreenerPage() {
           )}
         </div>
 
+        {/* 가로 스크롤 래퍼 */}
+        <div className="overflow-x-auto">
+          <div className="min-w-[680px]">
+
         {/* 컬럼 헤더 */}
         <div className="grid grid-cols-[2fr_1.2fr_1fr_1.3fr_1.5fr_1.5fr_auto] gap-x-3 px-5 py-2 bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
           <span>종목</span>
@@ -589,6 +593,9 @@ export default function ScreenerPage() {
             })}
           </div>
         )}
+
+          </div>{/* min-w-[680px] */}
+        </div>{/* overflow-x-auto */}
       </div>
 
       <p className="text-xs text-gray-400 text-center pb-1">

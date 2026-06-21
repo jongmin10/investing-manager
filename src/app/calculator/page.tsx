@@ -215,12 +215,12 @@ export default function CalculatorPage() {
             :             "월 투자금과 기간을 설정해 미래 자산을 시뮬레이션하세요."}
           </p>
         </div>
-        <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 overflow-x-auto">
           {TABS.map(([m, label]) => (
             <button
               key={m}
               onClick={() => setMode(m)}
-              className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+              className={`flex-1 px-2 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
                 mode === m ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
               }`}
             >
@@ -232,7 +232,7 @@ export default function CalculatorPage() {
 
       {/* ── 적립식 / 목표 역산 ── */}
       {(isAccum || isTarget) && (
-        <div className="grid grid-cols-[5fr_7fr] gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-[5fr_7fr] gap-3">
           <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
             <h2 className="font-semibold text-gray-900">
               {isAccum ? "투자 설정" : "목표 설정"}
@@ -260,16 +260,16 @@ export default function CalculatorPage() {
                   : `필요 월 투자금 — 목표 ${fmt(targetMan * 10_000)} · ${targetYears}년 · 연 ${targetRate}%`}
               </p>
               {isAccum ? (
-                <div className="grid grid-cols-3 gap-4">
-                  <div><p className="text-[11px] text-slate-400 mb-0.5">최종 금액</p><p className="text-2xl font-bold text-emerald-400">{fmt(fv)}</p></div>
-                  <div><p className="text-[11px] text-slate-400 mb-0.5">총 투자금</p><p className="text-2xl font-bold text-white">{fmt(principal)}</p></div>
-                  <div><p className="text-[11px] text-slate-400 mb-0.5">수익금</p><p className="text-2xl font-bold text-emerald-400">+{fmt(profit)}</p></div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  <div><p className="text-[11px] text-slate-400 mb-0.5">최종 금액</p><p className="text-xl font-bold text-emerald-400">{fmt(fv)}</p></div>
+                  <div><p className="text-[11px] text-slate-400 mb-0.5">총 투자금</p><p className="text-xl font-bold text-white">{fmt(principal)}</p></div>
+                  <div><p className="text-[11px] text-slate-400 mb-0.5">수익금</p><p className="text-xl font-bold text-emerald-400">+{fmt(profit)}</p></div>
                 </div>
               ) : validTarget ? (
-                <div className="grid grid-cols-3 gap-4">
-                  <div><p className="text-[11px] text-slate-400 mb-0.5">월 투자금</p><p className="text-2xl font-bold text-emerald-400">{fmt(neededPMTMan * 10_000)}</p></div>
-                  <div><p className="text-[11px] text-slate-400 mb-0.5">총 납입금</p><p className="text-2xl font-bold text-white">{fmt(totalPaid)}</p></div>
-                  <div><p className="text-[11px] text-slate-400 mb-0.5">예상 수익금</p><p className="text-2xl font-bold text-emerald-400">+{fmt(Math.max(0, targetProfit))}</p></div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  <div><p className="text-[11px] text-slate-400 mb-0.5">월 투자금</p><p className="text-xl font-bold text-emerald-400">{fmt(neededPMTMan * 10_000)}</p></div>
+                  <div><p className="text-[11px] text-slate-400 mb-0.5">총 납입금</p><p className="text-xl font-bold text-white">{fmt(totalPaid)}</p></div>
+                  <div><p className="text-[11px] text-slate-400 mb-0.5">예상 수익금</p><p className="text-xl font-bold text-emerald-400">+{fmt(Math.max(0, targetProfit))}</p></div>
                 </div>
               ) : (
                 <p className="text-sm text-slate-400">수익률 또는 기간을 조정해주세요.</p>
@@ -311,7 +311,7 @@ export default function CalculatorPage() {
 
       {/* ── 세액공제 계산기 ── */}
       {isTax && (
-        <div className="grid grid-cols-[5fr_7fr] gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-[5fr_7fr] gap-3">
           <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-5">
             <h2 className="font-semibold text-gray-900">납입 정보</h2>
 
@@ -355,16 +355,16 @@ export default function CalculatorPage() {
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
                   <p className="text-[11px] text-slate-400 mb-0.5">환급받는 세금</p>
-                  <p className="text-3xl font-bold text-emerald-400">
+                  <p className="text-2xl sm:text-3xl font-bold text-emerald-400">
                     {tax.deductionWon >= 10_000 ? `${(tax.deductionWon / 10_000).toFixed(1)}만원` : `${Math.round(tax.deductionWon).toLocaleString()}원`}
                   </p>
                 </div>
                 <div>
                   <p className="text-[11px] text-slate-400 mb-0.5">첫해 실효 수익률</p>
-                  <p className="text-3xl font-bold text-emerald-400">+{tax.effectiveReturn.toFixed(1)}%</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-emerald-400">+{tax.effectiveReturn.toFixed(1)}%</p>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3 border-t border-slate-700 pt-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 border-t border-slate-700 pt-3">
                 <div><p className="text-[11px] text-slate-500 mb-0.5">총 납입액</p><p className="text-sm font-semibold text-slate-300">{tax.totalMan.toLocaleString()}만원</p></div>
                 <div><p className="text-[11px] text-slate-500 mb-0.5">공제 대상액</p><p className="text-sm font-semibold text-slate-300">{tax.deductibleMan.toLocaleString()}만원</p></div>
                 <div><p className="text-[11px] text-slate-500 mb-0.5">적용 공제율</p><p className="text-sm font-semibold text-slate-300">{(tax.rate * 100).toFixed(1)}%</p></div>
@@ -411,7 +411,7 @@ export default function CalculatorPage() {
 
       {/* ── 연금 수령 시뮬레이션 ── */}
       {isPension && (
-        <div className="grid grid-cols-[5fr_7fr] gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-[5fr_7fr] gap-3">
           {/* 왼쪽: 입력 */}
           <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
             <h2 className="font-semibold text-gray-900">수령 조건 설정</h2>
@@ -447,16 +447,16 @@ export default function CalculatorPage() {
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
                   <p className="text-[11px] text-slate-400 mb-0.5">월 수령액 (세후)</p>
-                  <p className="text-3xl font-bold text-emerald-400">{fmt(monthlyNet)}</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">세전 {fmt(monthlyGross)} → 세금 {fmt(monthlyTax)}</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-emerald-400">{fmt(monthlyNet)}</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5 leading-tight">세전 {fmt(monthlyGross)}<br />세금 {fmt(monthlyTax)}</p>
                 </div>
                 <div>
                   <p className="text-[11px] text-slate-400 mb-0.5">연간 수령액 (세후)</p>
-                  <p className="text-3xl font-bold text-white">{fmt(annualNet)}</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">총 {fmt(totalReceived)} 수령</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-white">{fmt(annualNet)}</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">총 {fmt(totalReceived)} 수령</p>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3 border-t border-slate-700 pt-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 border-t border-slate-700 pt-3">
                 <div><p className="text-[11px] text-slate-500 mb-0.5">적용 세율</p><p className="text-sm font-semibold text-slate-300">{taxLabel}</p></div>
                 <div><p className="text-[11px] text-slate-500 mb-0.5">수령 기간</p><p className="text-sm font-semibold text-slate-300">{pensionYears}년 ({pensionYears * 12}회)</p></div>
                 <div><p className="text-[11px] text-slate-500 mb-0.5">세후 총 수령</p><p className="text-sm font-semibold text-slate-300">{fmt(totalReceived)}</p></div>

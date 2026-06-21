@@ -47,14 +47,14 @@ export default function JournalDetailPage() {
   if (status === "loading" || loading) {
     return <div className="flex items-center justify-center h-64"><div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>;
   }
-  if (!entry) return <div className="max-w-3xl mx-auto px-4 py-8 text-center text-gray-400">일기를 찾을 수 없습니다.</div>;
+  if (!entry) return <div className="max-w-3xl mx-auto text-center text-gray-400">일기를 찾을 수 없습니다.</div>;
 
   const mood = getMood(entry.mood);
   const dt   = getDecisionType(entry.decisionType);
   const hasSnapshot = entry.snapshotKospi || entry.snapshotSp500 || entry.snapshotKrwUsd || entry.snapshotUs10y;
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-5">
+    <div className="max-w-3xl mx-auto space-y-5">
       {/* 브레드크럼 */}
       <div className="flex items-center gap-2 text-sm text-gray-400">
         <Link href="/journal" className="hover:text-gray-600 transition-colors">투자 일기</Link>

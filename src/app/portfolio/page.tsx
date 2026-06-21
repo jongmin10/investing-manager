@@ -153,12 +153,12 @@ export default function PortfolioPage() {
       </div>
 
       {/* ── 탭 네비게이션 ── */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 overflow-x-auto">
         {TABS.map(({ key, label }) => (
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
+            className={`flex-1 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
               tab === key ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
             }`}
           >
@@ -349,10 +349,10 @@ export default function PortfolioPage() {
             </p>
             {totalInvestment ? (
               <>
-                <div className="grid grid-cols-3 gap-4 mb-3">
-                  <div><p className="text-[11px] text-slate-400 mb-0.5">누적 수익률 (명목)</p><p className="text-2xl font-bold text-emerald-400">+{portfolioReturn}%</p></div>
-                  <div><p className="text-[11px] text-slate-400 mb-0.5">수익금</p><p className="text-2xl font-bold text-emerald-400">{formatKRW(totalInvestment * portfolioReturn / 100)}</p></div>
-                  <div><p className="text-[11px] text-slate-400 mb-0.5">평가금액</p><p className="text-2xl font-bold text-white">{((totalInvestment + totalInvestment * portfolioReturn / 100) / 10_000).toLocaleString("ko-KR", { maximumFractionDigits: 0 })}만원</p></div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+                  <div><p className="text-[11px] text-slate-400 mb-0.5">누적 수익률 (명목)</p><p className="text-xl font-bold text-emerald-400">+{portfolioReturn}%</p></div>
+                  <div><p className="text-[11px] text-slate-400 mb-0.5">수익금</p><p className="text-xl font-bold text-emerald-400">{formatKRW(totalInvestment * portfolioReturn / 100)}</p></div>
+                  <div><p className="text-[11px] text-slate-400 mb-0.5">평가금액</p><p className="text-xl font-bold text-white">{((totalInvestment + totalInvestment * portfolioReturn / 100) / 10_000).toLocaleString("ko-KR", { maximumFractionDigits: 0 })}만원</p></div>
                 </div>
                 <div className="flex items-center gap-3 px-3 py-2 bg-slate-700/40 rounded-xl mb-3">
                   <div className="w-2 h-2 rounded-full bg-violet-400 flex-shrink-0" />

@@ -286,22 +286,22 @@ export default function TrackerPage() {
             return (
               <div className="mb-6 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 p-5 text-white">
                 <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">포트폴리오 추정 수익</p>
-                <div className="grid grid-cols-3 gap-4 mb-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
                   <div>
                     <p className="text-[11px] text-slate-400 mb-0.5">수익률</p>
-                    <p className={`text-2xl font-bold ${isPos ? "text-emerald-400" : "text-red-400"}`}>
+                    <p className={`text-xl font-bold ${isPos ? "text-emerald-400" : "text-red-400"}`}>
                       {isPos ? "+" : ""}{portfolio.totalReturn.toFixed(2)}%
                     </p>
                   </div>
                   <div>
                     <p className="text-[11px] text-slate-400 mb-0.5">수익금</p>
-                    <p className={`text-2xl font-bold ${isPos ? "text-emerald-400" : "text-red-400"}`}>
+                    <p className={`text-xl font-bold ${isPos ? "text-emerald-400" : "text-red-400"}`}>
                       {formatKRW(profit)}
                     </p>
                   </div>
                   <div>
                     <p className="text-[11px] text-slate-400 mb-0.5">평가금액</p>
-                    <p className="text-2xl font-bold text-white">
+                    <p className="text-xl font-bold text-white">
                       {(evaluation / 10_000).toLocaleString("ko-KR", { maximumFractionDigits: 0 })}만원
                     </p>
                   </div>
@@ -355,7 +355,7 @@ export default function TrackerPage() {
               <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 30, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                 <XAxis type="number" tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} width={100} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={80} />
                 <Tooltip formatter={(v) => [`${Number(v).toFixed(2)}%`, "수익률"]} />
                 <ReferenceLine x={0} stroke="#9ca3af" />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>

@@ -20,7 +20,7 @@ export default function ReportHistoryPage() {
   }, []);
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+    <div className="max-w-3xl mx-auto space-y-6">
       <div className="flex items-center gap-2 text-sm text-gray-400">
         <Link href="/report" className="hover:text-gray-600 transition-colors">시황 리포트</Link>
         <span>/</span>
