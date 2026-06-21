@@ -358,9 +358,9 @@ export default function ScreenerPage() {
           </div>
 
           {/* 등락률 퀵 버튼 (자체 줄) */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-3">
             <span className="text-xs font-medium text-gray-500 whitespace-nowrap shrink-0">등락률</span>
-            <div className="flex flex-wrap gap-1 rounded-xl">
+            <div className="flex flex-wrap items-center gap-1 rounded-xl">
               {RATE_PRESETS.map(({ key, label }) => (
                 <button key={key} onClick={() => handleRatePreset(key)}
                   className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
@@ -369,15 +369,15 @@ export default function ScreenerPage() {
                   {label}
                 </button>
               ))}
+              {ratePreset === "custom" && (
+                <div className="flex items-center gap-1 ml-1">
+                  <NumInput value={changeRateMin} onChange={setChangeRateMin} placeholder="-10" width="w-16" />
+                  <span className="text-xs text-gray-400">~</span>
+                  <NumInput value={changeRateMax} onChange={setChangeRateMax} placeholder="+10" width="w-16" />
+                  <span className="text-xs text-gray-400">%</span>
+                </div>
+              )}
             </div>
-            {ratePreset === "custom" && (
-              <div className="flex items-center gap-1">
-                <NumInput value={changeRateMin} onChange={setChangeRateMin} placeholder="-10" width="w-16" />
-                <span className="text-xs text-gray-400">~</span>
-                <NumInput value={changeRateMax} onChange={setChangeRateMax} placeholder="+10" width="w-16" />
-                <span className="text-xs text-gray-400">%</span>
-              </div>
-            )}
           </div>
 
           {/* 거래량 최소 (A: 신규) */}
