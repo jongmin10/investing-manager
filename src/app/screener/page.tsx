@@ -334,24 +334,23 @@ export default function ScreenerPage() {
 
         {/* 행 2: 가격 조건 */}
         <div className="space-y-3 pt-3 border-t border-gray-100">
-          {/* 헤더 + 52주 신고가 토글 (우측) */}
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">가격 조건</p>
-            <div className="flex items-center gap-3">
-              <div onClick={() => setUse52w((v) => !v)}
-                className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${use52w ? "bg-blue-500" : "bg-gray-400"}`}>
-                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${use52w ? "translate-x-4" : "translate-x-0.5"}`} />
-              </div>
-              <span className="text-xs font-medium text-gray-700 cursor-pointer whitespace-nowrap" onClick={() => setUse52w((v) => !v)}>52주 신고가</span>
-              {use52w && (
-                <div className="flex items-center gap-2">
-                  <input type="range" min={50} max={100} step={1} value={high52wMin}
-                    onChange={(e) => setHigh52wMin(Number(e.target.value))}
-                    className="w-24 accent-blue-500" />
-                  <span className="text-sm font-bold text-blue-600 w-16">{high52wMin}% 이상</span>
-                </div>
-              )}
+          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">가격 조건</p>
+
+          {/* 52주 신고가: 라벨 + 우측 토글 */}
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-medium text-gray-700 cursor-pointer whitespace-nowrap" onClick={() => setUse52w((v) => !v)}>52주 신고가</span>
+            <div onClick={() => setUse52w((v) => !v)}
+              className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${use52w ? "bg-blue-500" : "bg-gray-400"}`}>
+              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${use52w ? "translate-x-4" : "translate-x-0.5"}`} />
             </div>
+            {use52w && (
+              <div className="flex items-center gap-2">
+                <input type="range" min={50} max={100} step={1} value={high52wMin}
+                  onChange={(e) => setHigh52wMin(Number(e.target.value))}
+                  className="w-24 accent-blue-500" />
+                <span className="text-sm font-bold text-blue-600 w-16">{high52wMin}% 이상</span>
+              </div>
+            )}
           </div>
 
           {/* 등락률 퀵 버튼 (자체 줄) */}
@@ -400,23 +399,21 @@ export default function ScreenerPage() {
 
         {/* 행 3: 재무 조건 */}
         <div className="space-y-3 pt-3 border-t border-gray-100">
-          {/* 헤더 + 영업이익 흑자만 토글 (우측) */}
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-            <div className="flex items-center gap-3">
-              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">재무 조건</p>
-              {fin && fin.count > 0 && (
-                <span className="text-[11px] text-gray-400">{fin.count}개 종목 재무 데이터 보유</span>
-              )}
-            </div>
-            {/* 영업이익 흑자 토글 (A: 신규) */}
-            <label className="flex items-center gap-2 cursor-pointer">
-              <div onClick={() => setProfitableOnly((v) => !v)}
-                className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${profitableOnly ? "bg-emerald-500" : "bg-gray-400"}`}>
-                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${profitableOnly ? "translate-x-4" : "translate-x-0.5"}`} />
-              </div>
-              <span className="text-xs font-medium text-gray-700 whitespace-nowrap">영업이익 흑자만</span>
-            </label>
+          <div className="flex items-center gap-3">
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">재무 조건</p>
+            {fin && fin.count > 0 && (
+              <span className="text-[11px] text-gray-400">{fin.count}개 종목 재무 데이터 보유</span>
+            )}
           </div>
+
+          {/* 영업이익 흑자만: 라벨 + 우측 토글 */}
+          <label className="flex items-center gap-3 cursor-pointer w-fit">
+            <span className="text-xs font-medium text-gray-700 whitespace-nowrap">영업이익 흑자만</span>
+            <div onClick={() => setProfitableOnly((v) => !v)}
+              className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${profitableOnly ? "bg-emerald-500" : "bg-gray-400"}`}>
+              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${profitableOnly ? "translate-x-4" : "translate-x-0.5"}`} />
+            </div>
+          </label>
 
           {/* 매출 규모 (자체 줄) */}
           <div className="flex flex-wrap items-center gap-2">
