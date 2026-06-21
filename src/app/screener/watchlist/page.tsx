@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { getWatchlist, toggleWatchlistItem } from "@/lib/watchlist";
 
@@ -79,6 +79,22 @@ export default function WatchlistPage() {
   const [items, setItems]         = useState<StockItem[]>([]);
   const [loading, setLoading]     = useState(true);
 
+  const tableRef = useRef<HTMLDivElement>(null);
+  const [showLeftFade,  setShowLeftFade]  = useState(false);
+  const [showRightFade, setShowRightFade] = useState(false);
+
+  function checkScrollFades() {
+    const el = tableRef.current;
+    if (!el) return;
+    setShowLeftFade(el.scrollLeft > 4);
+    setShowRightFade(el.scrollLeft < el.scrollWidth - el.clientWidth - 4);
+  }
+
+  useEffect(() => {
+    const id = setTimeout(checkScrollFades, 50);
+    return () => clearTimeout(id);
+  }, [items, loading]);
+
   useEffect(() => {
     const ids = getWatchlist();
     setWatchlist(ids);
@@ -124,8 +140,19 @@ export default function WatchlistPage() {
 
       {/* 본문 */}
       <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-        {/* 가로 스크롤 래퍼 */}
-        <div className="overflow-x-auto">
+        {/* 모바일 스크롤 힌트 */}
+        {!loading && items.length > 0 && (
+          <div className="md:hidden flex items-center justify-center gap-1.5 py-1.5 bg-gray-50 border-b border-gray-100 text-[10px] text-gray-400">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l-4 4 4 4M16 9l4 4-4 4" /></svg>
+            좌우 스크롤
+          </div>
+        )}
+
+        {/* 가로 스크롤 래퍼 — 좌우 페이드 오버레이 */}
+        <div className="relative">
+          <div className={`absolute left-0 top-0 bottom-0 w-10 bg-gradient-to-r from-white to-transparent z-10 pointer-events-none transition-opacity duration-200 ${showLeftFade ? "opacity-100" : "opacity-0"}`} />
+          <div className={`absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-white to-transparent z-10 pointer-events-none transition-opacity duration-200 ${showRightFade ? "opacity-100" : "opacity-0"}`} />
+        <div className="overflow-x-auto scrollbar-table" ref={tableRef} onScroll={checkScrollFades}>
           <div className="min-w-[680px]">
 
         {/* 컬럼 헤더 */}
@@ -258,7 +285,8 @@ export default function WatchlistPage() {
         )}
 
           </div>{/* min-w-[680px] */}
-        </div>{/* overflow-x-auto */}
+        </div>{/* overflow-x-auto scrollbar-table */}
+        </div>{/* relative fade wrapper */}
       </div>
     </div>
   );

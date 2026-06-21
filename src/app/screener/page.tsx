@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { getWatchlist, toggleWatchlistItem } from "@/lib/watchlist";
 
 interface StockItem {
@@ -80,6 +80,23 @@ export default function ScreenerPage() {
   const [collecting,          setCollecting]          = useState(false);
   const [financialCollecting, setFinancialCollecting] = useState(false);
   const [watchlist,           setWatchlist]           = useState<Set<string>>(new Set());
+
+  // 테이블 가로 스크롤 표시
+  const tableRef = useRef<HTMLDivElement>(null);
+  const [showLeftFade,  setShowLeftFade]  = useState(false);
+  const [showRightFade, setShowRightFade] = useState(false);
+
+  function checkScrollFades() {
+    const el = tableRef.current;
+    if (!el) return;
+    setShowLeftFade(el.scrollLeft > 4);
+    setShowRightFade(el.scrollLeft < el.scrollWidth - el.clientWidth - 4);
+  }
+
+  useEffect(() => {
+    const id = setTimeout(checkScrollFades, 50);
+    return () => clearTimeout(id);
+  }, [result, loading]);
 
   useEffect(() => { setWatchlist(getWatchlist()); }, []);
 
@@ -447,15 +464,26 @@ export default function ScreenerPage() {
               <span className="text-xs font-normal text-gray-400 ml-2">기준일 {fmtTime(result.collectedAt)}</span>
             )}
           </p>
-          {hasFinancialFilter && fin?.count === 0 && (
-            <span className="text-xs text-amber-600 bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-full">
-              재무 데이터 수집 후 이용 가능
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {!loading && (result?.items.length ?? 0) > 0 && (
+              <span className="md:hidden inline-flex items-center gap-1 text-[10px] text-gray-400 bg-gray-50 border border-gray-200 px-2 py-0.5 rounded-full">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l-4 4 4 4M16 9l4 4-4 4" /></svg>
+                좌우 스크롤
+              </span>
+            )}
+            {hasFinancialFilter && fin?.count === 0 && (
+              <span className="text-xs text-amber-600 bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-full">
+                재무 데이터 수집 후 이용 가능
+              </span>
+            )}
+          </div>
         </div>
 
-        {/* 가로 스크롤 래퍼 */}
-        <div className="overflow-x-auto">
+        {/* 가로 스크롤 래퍼 — 좌우 페이드 오버레이 */}
+        <div className="relative">
+          <div className={`absolute left-0 top-0 bottom-0 w-10 bg-gradient-to-r from-white to-transparent z-10 pointer-events-none transition-opacity duration-200 ${showLeftFade ? "opacity-100" : "opacity-0"}`} />
+          <div className={`absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-white to-transparent z-10 pointer-events-none transition-opacity duration-200 ${showRightFade ? "opacity-100" : "opacity-0"}`} />
+        <div className="overflow-x-auto scrollbar-table" ref={tableRef} onScroll={checkScrollFades}>
           <div className="min-w-[680px]">
 
         {/* 컬럼 헤더 */}
@@ -595,7 +623,8 @@ export default function ScreenerPage() {
         )}
 
           </div>{/* min-w-[680px] */}
-        </div>{/* overflow-x-auto */}
+        </div>{/* overflow-x-auto scrollbar-table */}
+        </div>{/* relative fade wrapper */}
       </div>
 
       <p className="text-xs text-gray-400 text-center pb-1">

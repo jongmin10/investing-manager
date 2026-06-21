@@ -10,3 +10,22 @@ body {
   color: var(--foreground);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
 }
+
+/* 테이블 가로 스크롤바 */
+.scrollbar-table {
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #f1f5f9;
+}
+.scrollbar-table::-webkit-scrollbar {
+  height: 5px;
+}
+.scrollbar-table::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+.scrollbar-table::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 3px;
+}
+.scrollbar-table::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
