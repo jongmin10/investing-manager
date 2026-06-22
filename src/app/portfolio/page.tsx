@@ -56,6 +56,31 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "rebalancing", label: "리밸런싱"   },
 ];
 
+// 보유 비중 입력칸: 편집 중에는 원시 문자열 유지(자유 편집·비우기 허용), 클램핑은 blur에서만
+function AllocInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => { setText(String(value)); }, [value]);
+  return (
+    <input
+      type="number" min={0} max={100} step={1} value={text}
+      onChange={(e) => {
+        const raw = e.target.value;
+        setText(raw);
+        if (raw === "") return; // 비우는 중 — 값 유지
+        const n = Number(raw);
+        if (!Number.isNaN(n) && n >= 0 && n <= 100) onChange(n);
+      }}
+      onBlur={() => {
+        const n = Number(text);
+        const next = text === "" || Number.isNaN(n) ? 0 : Math.max(0, Math.min(100, n));
+        onChange(next);
+        setText(String(next));
+      }}
+      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm pr-8 focus:outline-none focus:ring-2 focus:ring-blue-300"
+    />
+  );
+}
+
 export default function PortfolioPage() {
   const [data,    setData]    = useState<PortfolioData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -470,10 +495,9 @@ export default function PortfolioPage() {
                         <span className="text-sm text-gray-700">{a.label}</span>
                       </div>
                       <div className="flex-1 relative">
-                        <input
-                          type="number" min={0} max={100} step={1} value={currentAlloc[a.key]}
-                          onChange={(e) => setCurrentAlloc((prev) => ({ ...prev, [a.key]: Math.max(0, Math.min(100, Number(e.target.value))) }))}
-                          className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm pr-8 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                        <AllocInput
+                          value={currentAlloc[a.key]}
+                          onChange={(v) => setCurrentAlloc((prev) => ({ ...prev, [a.key]: v }))}
                         />
                         <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
                       </div>
