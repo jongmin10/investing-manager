@@ -674,7 +674,7 @@ export default function CalculatorPage() {
                   >
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                     <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}만`} />
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} width={72} />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={92} />
                     <Tooltip formatter={((v: number | undefined) => [`${(v ?? 0).toLocaleString()}만원`, "납부 세금"]) as any} />
                     <Bar dataKey="세금" radius={[0, 4, 4, 0]}>
                       {[{ color: "#ef4444" }, { color: "#3b82f6" }].map((entry, i) => (
