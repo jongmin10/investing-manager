@@ -161,12 +161,12 @@ function SliderInput({
 }) {
   return (
     <div>
-      <div className="flex justify-between items-center mb-1.5">
+      <div className="flex justify-between items-center mb-1">
         <label className="text-sm font-medium text-gray-700">{label}</label>
         <div className="flex items-center gap-1.5">
           <NumberField
             value={value} onChange={onChange} min={min} max={max} step={step}
-            className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-300"
+            className="w-20 border border-gray-200 rounded-lg px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-300"
           />
           <span className="text-sm text-gray-500 whitespace-nowrap shrink-0">{unit}</span>
         </div>
@@ -330,7 +330,7 @@ export default function CalculatorPage() {
   ];
 
   return (
-    <div className="max-w-5xl mx-auto space-y-3">
+    <div className="max-w-5xl mx-auto space-y-2.5">
 
       {/* ── 헤더 ── */}
       <div>
@@ -344,12 +344,12 @@ export default function CalculatorPage() {
       </div>
 
       {/* ── 모드 토글 (타이틀 아래 배치) ── */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 overflow-x-auto w-full sm:w-fit">
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-0.5 overflow-x-auto w-full sm:w-fit">
         {TABS.map(([m, label]) => (
           <button
             key={m}
             onClick={() => setMode(m)}
-            className={`flex-1 sm:flex-initial px-2 sm:px-5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
+            className={`flex-1 sm:flex-initial px-2 sm:px-5 py-1 rounded-lg text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
               mode === m ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
             }`}
           >
@@ -361,7 +361,7 @@ export default function CalculatorPage() {
       {/* ── 적립식 / 목표 역산 ── */}
       {(isAccum || isTarget) && (
         <div className="flex flex-col gap-3 md:grid md:grid-cols-[5fr_7fr]">
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3">
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-2.5">
             <h2 className="font-semibold text-gray-900">
               {isAccum ? "투자 설정" : "목표 설정"}
             </h2>
@@ -380,7 +380,7 @@ export default function CalculatorPage() {
                 <SliderInput label="연 수익률 (CAGR)"  value={targetRate}  onChange={setTargetRate}  min={0.5}  max={25}     step={0.5}  unit="%"    tickLeft="0.5%"      tickRight="25%" />
               </>
             )}
-            <div className="pt-1 border-t border-gray-100 space-y-3">
+            <div className="pt-1 border-t border-gray-100 space-y-2.5">
               <SliderInput label="매년 납입 증액 (급여 상승 반영)" value={stepUp}    onChange={setStepUp}    min={0} max={15} step={1}   unit="%" tickLeft="0%" tickRight="15%" />
               <SliderInput label="운용보수 (연 TER)"            value={ter}       onChange={setTer}       min={0} max={2}  step={0.1} unit="%" tickLeft="0%" tickRight="2%" />
               <SliderInput label="물가상승률 (실질가치 환산)"    value={inflation} onChange={setInflation} min={0} max={6}  step={0.1} unit="%" tickLeft="0%" tickRight="6%" />
@@ -392,8 +392,8 @@ export default function CalculatorPage() {
             </div>
           </div>
 
-          <div className="space-y-3">
-            <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 px-5 py-4 text-white">
+          <div className="space-y-2.5">
+            <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 px-5 py-3 text-white">
               <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">
                 {isAccum
                   ? `${years}년 후 예상 자산 — 월 ${monthly.toLocaleString()}만원${stepUp > 0 ? ` (매년 +${stepUp}%)` : ""} · 연 ${rate}%`
@@ -473,7 +473,7 @@ export default function CalculatorPage() {
       {/* ── 세액공제 계산기 ── */}
       {isTax && (
         <div className="flex flex-col gap-3 md:grid md:grid-cols-[5fr_7fr]">
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-2.5">
             <h2 className="font-semibold text-gray-900">납입 정보</h2>
 
             <div>
@@ -482,7 +482,7 @@ export default function CalculatorPage() {
                 <div className="flex items-center gap-1.5">
                   <NumberField
                     value={grossIncome} onChange={setGrossIncome} min={1000} max={100000} step={100}
-                    className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    className="w-20 border border-gray-200 rounded-lg px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-300"
                   />
                   <span className="text-sm text-gray-500 whitespace-nowrap shrink-0">만원</span>
                 </div>
@@ -509,10 +509,10 @@ export default function CalculatorPage() {
             </p>
           </div>
 
-          <div className="space-y-3">
-            <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 px-5 py-4 text-white">
-              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">{new Date().getFullYear()}년 귀속 연말정산 세액공제 예상액</p>
-              <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="space-y-2.5">
+            <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 px-5 py-3 text-white">
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-2">{new Date().getFullYear()}년 귀속 연말정산 세액공제 예상액</p>
+              <div className="grid grid-cols-2 gap-4 mb-3">
                 <div>
                   <p className="text-[11px] text-slate-400 mb-0.5">환급받는 세금</p>
                   <p className="text-2xl sm:text-3xl font-bold text-emerald-400">
@@ -531,9 +531,9 @@ export default function CalculatorPage() {
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-              <h3 className="text-sm font-semibold text-gray-800 mb-4">소득 구간별 공제율</h3>
-              <div className="space-y-3">
+            <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+              <h3 className="text-sm font-semibold text-gray-800 mb-3">소득 구간별 공제율</h3>
+              <div className="space-y-2.5">
                 {[
                   { label: "총급여 5,500만원 이하", rate: 16.5, max: 148.5, active: grossIncome <= 5500 },
                   { label: "총급여 5,500만원 초과", rate: 13.2, max: 118.8, active: grossIncome > 5500 },
@@ -550,7 +550,7 @@ export default function CalculatorPage() {
                   </div>
                 ))}
               </div>
-              <div className="mt-5">
+              <div className="mt-3">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-medium text-gray-600">공제 한도 활용률</span>
                   <span className="text-xs text-gray-500">{Math.min(tax.totalMan, TAX_DEDUCTION_LIMIT_MAN).toLocaleString()} / {TAX_DEDUCTION_LIMIT_MAN}만원</span>
@@ -567,7 +567,7 @@ export default function CalculatorPage() {
             </div>
 
             {/* 환급금 재투자 복리 효과 */}
-            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+            <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-2.5">
               <div>
                 <h3 className="text-sm font-semibold text-gray-800">환급금 재투자 복리 효과</h3>
                 <p className="text-[11px] text-gray-400 mt-0.5">매년 받는 환급금({fmt(tax.deductionWon)})을 재투자하면 세액공제가 복리로 불어납니다.</p>
@@ -599,7 +599,7 @@ export default function CalculatorPage() {
         )}
         <div className="flex flex-col gap-3 md:grid md:grid-cols-[5fr_7fr]">
           {/* 왼쪽: 입력 */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3">
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-2.5">
             <h2 className="font-semibold text-gray-900">수령 조건 설정</h2>
             <SliderInput label="예상 적립금"        value={pensionFund}  onChange={(v) => { setPensionFund(v); setLinkedFrom(null); }}  min={1000}  max={200000} step={1000} unit="만원" tickLeft="1,000만원" tickRight="20억원" />
             <SliderInput label="수령 시작 나이"      value={pensionAge}   onChange={setPensionAge}   min={55}    max={80}     step={1}    unit="세"   tickLeft="55세"      tickRight="80세" />
@@ -625,13 +625,13 @@ export default function CalculatorPage() {
           </div>
 
           {/* 오른쪽: 결과 */}
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {/* 메인 결과 카드 */}
-            <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 px-5 py-4 text-white">
-              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">
+            <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 px-5 py-3 text-white">
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-2">
                 {pensionAge}세부터 {pensionYears}년 수령 — {fmt(pensionFund * 10_000)} 적립금 · 연 {pensionRate}% 운용
               </p>
-              <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="grid grid-cols-2 gap-4 mb-3">
                 <div>
                   <p className="text-[11px] text-slate-400 mb-0.5">월 수령액 (세후)</p>
                   <p className="text-2xl sm:text-3xl font-bold text-emerald-400">{fmt(monthlyNet)}</p>
@@ -659,10 +659,10 @@ export default function CalculatorPage() {
             </div>
 
             {/* 일시금 vs 연금 세금 비교 */}
-            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+            <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
               <h3 className="text-sm font-semibold text-gray-800 mb-1">일시금 vs 연금 수령 비교</h3>
-              <p className="text-[11px] text-gray-400 mb-4">세액공제·운용수익 재원 기준 — 일시금/중도해지 기타소득세 16.5% vs 연금소득세 누계</p>
-              <div className="h-36">
+              <p className="text-[11px] text-gray-400 mb-3">세액공제·운용수익 재원 기준 — 일시금/중도해지 기타소득세 16.5% vs 연금소득세 누계</p>
+              <div className="h-32">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     data={[
@@ -698,9 +698,9 @@ export default function CalculatorPage() {
             </div>
 
             {/* 잔액 추이 차트 */}
-            <div className="bg-white border border-gray-200 rounded-2xl px-5 pt-4 pb-3 shadow-sm">
-              <p className="text-sm font-semibold text-gray-700 mb-3">연도별 잔액 추이</p>
-              <div className="h-40">
+            <div className="bg-white border border-gray-200 rounded-2xl px-5 pt-3 pb-3 shadow-sm">
+              <p className="text-sm font-semibold text-gray-700 mb-2">연도별 잔액 추이</p>
+              <div className="h-32">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={annuityChart} margin={{ top: 2, right: 8, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -721,7 +721,7 @@ export default function CalculatorPage() {
       {isRoadmap && (
         <div className="flex flex-col gap-3 md:grid md:grid-cols-[5fr_7fr]">
           {/* 왼쪽: 입력 */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3">
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-2">
             <p className="text-xs font-semibold text-emerald-600">① 적립 단계</p>
             <SliderInput label="현재 나이"      value={roadCurrentAge} onChange={(v) => setRoadCurrentAge(Math.min(v, roadRetireAge - 1))} min={20} max={64} step={1} unit="세" tickLeft="20세" tickRight="64세" />
             <SliderInput label="수령 시작 나이"  value={roadRetireAge}  onChange={(v) => setRoadRetireAge(Math.max(v, roadCurrentAge + 1))}  min={55} max={75} step={1} unit="세" tickLeft="55세" tickRight="75세" />
@@ -737,8 +737,8 @@ export default function CalculatorPage() {
           </div>
 
           {/* 오른쪽: 결과 + 타임라인 */}
-          <div className="space-y-3">
-            <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 px-5 py-4 text-white">
+          <div className="space-y-2.5">
+            <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 px-5 py-3 text-white">
               <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">
                 {roadCurrentAge}세부터 {roadAccYears}년 적립 → {roadRetireAge}세부터 {roadWithdrawYears}년 수령
               </p>
