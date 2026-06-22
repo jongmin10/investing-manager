@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, Cell, ReferenceLine,
@@ -119,6 +119,39 @@ function fmt(won: number): string {
   return `${won.toLocaleString("ko-KR")}원`;
 }
 
+// 숫자 입력칸: 편집 중에는 원시 문자열을 유지(자유 편집 허용), 범위 클램핑은 blur에서만 적용
+function NumberField({
+  value, onChange, min, max, step, className,
+}: {
+  value: number; onChange: (v: number) => void;
+  min: number; max: number; step: number; className?: string;
+}) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => { setText(String(value)); }, [value]);
+
+  const handleChange = (raw: string) => {
+    setText(raw);
+    if (raw === "") return; // 비우는 중 — 계산값 유지
+    const n = Number(raw);
+    if (!Number.isNaN(n) && n >= min && n <= max) onChange(n); // 유효 범위 내일 때만 즉시 반영
+  };
+  const handleBlur = () => {
+    const n = Number(text);
+    const next = text === "" || Number.isNaN(n) ? min : Math.min(max, Math.max(min, n));
+    onChange(next);
+    setText(String(next));
+  };
+
+  return (
+    <input
+      type="number" min={min} max={max} step={step} value={text}
+      onChange={(e) => handleChange(e.target.value)}
+      onBlur={handleBlur}
+      className={className}
+    />
+  );
+}
+
 function SliderInput({
   label, value, onChange, min, max, step, unit, tickLeft, tickRight,
 }: {
@@ -131,9 +164,8 @@ function SliderInput({
       <div className="flex justify-between items-center mb-2">
         <label className="text-sm font-medium text-gray-700">{label}</label>
         <div className="flex items-center gap-1.5">
-          <input
-            type="number" min={min} max={max} step={step} value={value}
-            onChange={(e) => onChange(Math.min(max, Math.max(min, Number(e.target.value))))}
+          <NumberField
+            value={value} onChange={onChange} min={min} max={max} step={step}
             className="w-24 border border-gray-200 rounded-lg px-2 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-300"
           />
           <span className="text-sm text-gray-500 whitespace-nowrap shrink-0">{unit}</span>
@@ -448,9 +480,8 @@ export default function CalculatorPage() {
               <div className="flex justify-between items-center mb-2">
                 <label className="text-sm font-medium text-gray-700">총급여</label>
                 <div className="flex items-center gap-1.5">
-                  <input
-                    type="number" min={1000} max={100000} step={100} value={grossIncome}
-                    onChange={(e) => setGrossIncome(Math.max(1000, Number(e.target.value)))}
+                  <NumberField
+                    value={grossIncome} onChange={setGrossIncome} min={1000} max={100000} step={100}
                     className="w-24 border border-gray-200 rounded-lg px-2 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-300"
                   />
                   <span className="text-sm text-gray-500 whitespace-nowrap shrink-0">만원</span>
