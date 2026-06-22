@@ -119,6 +119,15 @@ function fmt(won: number): string {
   return `${won.toLocaleString("ko-KR")}원`;
 }
 
+// 차트 Y축 라벨(값 단위: 만원). 1억 이상은 정확한 소수 표기(1.4억), 정수면 소수점 생략
+function fmtAxisMan(v: number): string {
+  if (v >= 10_000) {
+    const eok = v / 10_000;
+    return `${Number.isInteger(eok) ? eok : eok.toFixed(1)}억`;
+  }
+  return `${v}만`;
+}
+
 // 숫자 입력칸: 편집 중에는 원시 문자열을 유지(자유 편집 허용), 범위 클램핑은 blur에서만 적용
 function NumberField({
   value, onChange, min, max, step, className,
@@ -459,7 +468,7 @@ export default function CalculatorPage() {
                   <AreaChart data={isAccum ? chartData : targetChart} margin={{ top: 2, right: 8, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis dataKey="year" tick={{ fontSize: 12 }} interval={xInterval(isAccum ? years : targetYears)} />
-                    <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => v >= 10_000 ? `${(v / 10_000).toFixed(0)}억` : `${v}만`} width={46} />
+                    <YAxis tick={{ fontSize: 12 }} tickFormatter={fmtAxisMan} width={46} />
                     <Tooltip formatter={((v: number | undefined, name: string) => [`${(v ?? 0).toLocaleString()}만원`, name]) as any} labelStyle={{ fontWeight: 600, fontSize: 12 }} contentStyle={{ fontSize: 12 }} />
                     <Area type="monotone" dataKey="원금" stackId="1" stroke="#93c5fd" fill="#dbeafe" strokeWidth={1.5} />
                     <Area type="monotone" dataKey="수익" stackId="1" stroke="#34d399" fill="#d1fae5" strokeWidth={1.5} />
@@ -667,7 +676,7 @@ export default function CalculatorPage() {
                   <AreaChart data={annuityChart} margin={{ top: 2, right: 8, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis dataKey="year" tick={{ fontSize: 11 }} interval={xInterval(pensionYears)} />
-                    <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => v >= 10_000 ? `${(v / 10_000).toFixed(0)}억` : `${v}만`} width={46} />
+                    <YAxis tick={{ fontSize: 11 }} tickFormatter={fmtAxisMan} width={46} />
                     <Tooltip formatter={((v: number | undefined) => [`${(v ?? 0).toLocaleString()}만원`, "잔액"]) as any} labelStyle={{ fontWeight: 600, fontSize: 12 }} contentStyle={{ fontSize: 12 }} />
                     <Area type="monotone" dataKey="잔액" stroke="#3b82f6" fill="#dbeafe" strokeWidth={2} />
                   </AreaChart>
@@ -735,7 +744,7 @@ export default function CalculatorPage() {
                   <AreaChart data={road.data} margin={{ top: 2, right: 8, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis dataKey="age" type="number" domain={["dataMin", "dataMax"]} tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}세`} interval="preserveStartEnd" />
-                    <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => v >= 10_000 ? `${(v / 10_000).toFixed(0)}억` : `${v}만`} width={46} />
+                    <YAxis tick={{ fontSize: 11 }} tickFormatter={fmtAxisMan} width={46} />
                     <Tooltip
                       formatter={((v: number | undefined, name: string) => [`${(v ?? 0).toLocaleString()}만원`, name]) as any}
                       labelFormatter={(l) => `${l}세`}
