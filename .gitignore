@@ -45,3 +45,6 @@ prisma/dev.db-journal
 next-env.d.ts
 
 /src/generated/prisma
+
+# verification screenshots
+/scripts/_calc-shots/

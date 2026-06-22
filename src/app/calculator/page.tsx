@@ -142,6 +142,10 @@ export default function CalculatorPage() {
   const [pensionYears,  setPensionYears]  = useState(20);
   const [pensionRate,   setPensionRate]   = useState(3);
 
+  // 인플레이션 (실질가치 환산용)
+  const [inflation, setInflation] = useState(2.5);
+  const realValue = (nominal: number, yrs: number) => nominal / Math.pow(1 + inflation / 100, yrs);
+
   // ── 적립식 계산 ──
   const fv        = useMemo(() => calcFV(monthly * 10_000, rate, years), [monthly, rate, years]);
   const principal = monthly * 10_000 * years * 12;
@@ -170,21 +174,26 @@ export default function CalculatorPage() {
   const pensionPV         = pensionFund * 10_000;
   const monthlyGross      = useMemo(() => calcAnnuityPMT(pensionPV, pensionRate, pensionYears), [pensionPV, pensionRate, pensionYears]);
   const { rate: taxRate, label: taxLabel } = getPensionTaxRate(pensionAge);
-  const monthlyTax        = monthlyGross * taxRate;
-  const monthlyNet        = monthlyGross - monthlyTax;
   const annualGross       = monthlyGross * 12;
-  const annualNet         = monthlyNet * 12;
+  // 연금소득세: 연 1,500만원까지 저율 분리과세, 초과분은 16.5% 분리과세 선택 가정
+  const PENSION_SEP_LIMIT = 15_000_000;
+  const annualTax         = Math.min(annualGross, PENSION_SEP_LIMIT) * taxRate
+                          + Math.max(0, annualGross - PENSION_SEP_LIMIT) * 0.165;
+  const monthlyTax        = annualTax / 12;
+  const monthlyNet        = monthlyGross - monthlyTax;
+  const annualNet         = annualGross - annualTax;
   const totalReceived     = monthlyNet * pensionYears * 12;
-  const isOverAnnualLimit = annualGross > 15_000_000; // 연 1,500만원 초과 시 종합과세 가능
+  const isOverAnnualLimit = annualGross > PENSION_SEP_LIMIT; // 연 1,500만원 초과분 고율 과세
   const annuityChart      = useMemo(
     () => genAnnuityChart(pensionPV, pensionRate, pensionYears),
     [pensionPV, pensionRate, pensionYears]
   );
-  // 일시금 vs 연금 비교 (세금 절감액)
-  const estimatedLumpTaxRate = 0.22; // 퇴직소득세 추정 (중간 구간)
-  const lumpTax   = pensionPV * estimatedLumpTaxRate;
-  const annuityTotalTax = monthlyTax * pensionYears * 12;
-  const taxSaving = lumpTax - annuityTotalTax;
+  // 일시금(중도해지) vs 연금 비교 — IRP 세액공제·운용수익 재원 기준
+  // 일시금/중도해지: 기타소득세 16.5% / 연금: 위 연금소득세 누계
+  const LUMP_TAX_RATE   = 0.165;
+  const lumpTax         = pensionPV * LUMP_TAX_RATE;
+  const annuityTotalTax = annualTax * pensionYears;
+  const taxSaving       = lumpTax - annuityTotalTax;
 
   const xInterval = (y: number) => Math.max(0, Math.ceil(y / 8) - 1);
 
@@ -250,6 +259,9 @@ export default function CalculatorPage() {
                 <SliderInput label="연 수익률 (CAGR)"  value={targetRate}  onChange={setTargetRate}  min={0.5}  max={25}     step={0.5}  unit="%"    tickLeft="0.5%"      tickRight="25%" />
               </>
             )}
+            <div className="pt-1 border-t border-gray-100">
+              <SliderInput label="물가상승률 (실질가치 환산)" value={inflation} onChange={setInflation} min={0} max={6} step={0.1} unit="%" tickLeft="0%" tickRight="6%" />
+            </div>
           </div>
 
           <div className="space-y-3">
@@ -273,6 +285,13 @@ export default function CalculatorPage() {
                 </div>
               ) : (
                 <p className="text-sm text-slate-400">수익률 또는 기간을 조정해주세요.</p>
+              )}
+              {inflation > 0 && (isAccum ? fv > 0 : validTarget) && (
+                <p className="text-[11px] text-slate-400 mt-3 leading-relaxed">
+                  {isAccum
+                    ? <>오늘 가치로 약 <span className="font-semibold text-amber-300">{fmt(realValue(fv, years))}</span> · 연 {inflation}% 물가 반영 시 실질 구매력</>
+                    : <>목표 {fmt(targetMan * 10_000)}의 오늘 가치는 약 <span className="font-semibold text-amber-300">{fmt(realValue(targetMan * 10_000, targetYears))}</span> (연 {inflation}% 물가)</>}
+                </p>
               )}
               <div className="flex items-center justify-between border-t border-slate-700/60 pt-2 mt-3">
                 <p className="text-[11px] text-slate-500">
@@ -351,7 +370,7 @@ export default function CalculatorPage() {
 
           <div className="space-y-3">
             <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 px-5 py-4 text-white">
-              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">2024년 연말정산 세액공제 예상액</p>
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">{new Date().getFullYear()}년 귀속 연말정산 세액공제 예상액</p>
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
                   <p className="text-[11px] text-slate-400 mb-0.5">환급받는 세금</p>
@@ -419,6 +438,7 @@ export default function CalculatorPage() {
             <SliderInput label="수령 시작 나이"      value={pensionAge}   onChange={setPensionAge}   min={55}    max={80}     step={1}    unit="세"   tickLeft="55세"      tickRight="80세" />
             <SliderInput label="수령 기간"           value={pensionYears} onChange={setPensionYears} min={5}     max={30}     step={1}    unit="년"   tickLeft="5년"       tickRight="30년" />
             <SliderInput label="연금 운용 수익률"    value={pensionRate}  onChange={setPensionRate}  min={0}     max={7}      step={0.5}  unit="%"    tickLeft="0%"        tickRight="7%" />
+            <SliderInput label="물가상승률 (실질가치 환산)" value={inflation} onChange={setInflation} min={0} max={6} step={0.1} unit="%" tickLeft="0%" tickRight="6%" />
 
             {/* 연금소득세율 안내 */}
             <div className="pt-1 border-t border-gray-100 space-y-2">
@@ -449,6 +469,9 @@ export default function CalculatorPage() {
                   <p className="text-[11px] text-slate-400 mb-0.5">월 수령액 (세후)</p>
                   <p className="text-2xl sm:text-3xl font-bold text-emerald-400">{fmt(monthlyNet)}</p>
                   <p className="text-[10px] text-slate-500 mt-0.5 leading-tight">세전 {fmt(monthlyGross)}<br />세금 {fmt(monthlyTax)}</p>
+                  {inflation > 0 && (
+                    <p className="text-[10px] text-amber-300/90 mt-1 leading-tight">수령 {pensionYears}년 차 실질가치 {fmt(realValue(monthlyNet, pensionYears))}</p>
+                  )}
                 </div>
                 <div>
                   <p className="text-[11px] text-slate-400 mb-0.5">연간 수령액 (세후)</p>
@@ -471,12 +494,12 @@ export default function CalculatorPage() {
             {/* 일시금 vs 연금 세금 비교 */}
             <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
               <h3 className="text-sm font-semibold text-gray-800 mb-1">일시금 vs 연금 수령 비교</h3>
-              <p className="text-[11px] text-gray-400 mb-4">동일 적립금 기준 세금 부담 비교 (퇴직소득세 추정 22%)</p>
+              <p className="text-[11px] text-gray-400 mb-4">세액공제·운용수익 재원 기준 — 일시금/중도해지 기타소득세 16.5% vs 연금소득세 누계</p>
               <div className="h-36">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     data={[
-                      { name: "일시금 수령", 세금: Math.round(lumpTax / 10_000), color: "#ef4444" },
+                      { name: "일시금/중도해지", 세금: Math.round(lumpTax / 10_000), color: "#ef4444" },
                       { name: "연금 수령", 세금: Math.round(annuityTotalTax / 10_000), color: "#3b82f6" },
                     ]}
                     layout="vertical"
@@ -502,6 +525,9 @@ export default function CalculatorPage() {
                   </p>
                 </div>
               )}
+              <p className="mt-2 text-[11px] text-gray-400 leading-relaxed">
+                ※ 퇴직금 재원은 <strong>퇴직소득세</strong>가 적용되며, 연금으로 수령하면 퇴직소득세를 30%(10년 이내)~40%(11년 이상) 감면받습니다. 위 비교는 세액공제·운용수익 재원 기준입니다.
+              </p>
             </div>
 
             {/* 잔액 추이 차트 */}
