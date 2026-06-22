@@ -24,8 +24,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <MobileNav />
 
           {/* 메인 콘텐츠 — 사이드바 너비만큼 오른쪽으로 */}
-          <div className="md:ml-56">
-            <main className="max-w-5xl mx-auto px-4 py-6 pb-24 md:pb-8">
+          {/* 모바일 고정 하단 네비 높이만큼 하단 여백 확보(경고문 잘림 방지) */}
+          <div className="md:ml-56 pb-24 md:pb-0">
+            <main className="max-w-5xl mx-auto px-4 py-6">
               {children}
             </main>
             <footer className="max-w-5xl mx-auto px-4 pb-6">
