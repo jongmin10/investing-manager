@@ -303,9 +303,14 @@ export default function CalculatorPage() {
   const roadAccYears   = Math.max(0, roadRetireAge - roadCurrentAge);
   const { rate: roadTaxRate } = getPensionTaxRate(roadRetireAge);
   const roadAnnualGross = road.grossMonthly * 12;
-  const roadAnnualTax  = Math.min(roadAnnualGross, 15_000_000) * roadTaxRate + Math.max(0, roadAnnualGross - 15_000_000) * 0.165;
+  // 연 1,500만원 초과 시 전액 16.5% 분리과세(연금 수령 탭과 동일 기준)
+  const roadAnnualTax  = roadAnnualGross * (roadAnnualGross > 15_000_000 ? 0.165 : roadTaxRate);
   const roadMonthlyNet = road.grossMonthly - roadAnnualTax / 12;
   const roadPeakReal   = realValue(road.peak, roadAccYears);
+  // 단계별 요약
+  const roadTotalContrib = (roadSeed + roadMonthly * 12 * roadAccYears) * 10_000; // 시드+월납입 누계
+  const roadAccProfit    = road.peak - roadTotalContrib;                          // 적립기 운용수익
+  const roadTotalNet     = roadMonthlyNet * 12 * roadWithdrawYears;               // 수령기 세후 총수령
 
   const xInterval = (y: number) => Math.max(0, Math.ceil(y / 8) - 1);
 
@@ -745,6 +750,37 @@ export default function CalculatorPage() {
               <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
                 {roadCurrentAge}세에 {fmt(roadSeed * 10_000)}로 시작해 매달 {roadMonthly}만원씩 {roadAccYears}년 적립하면 {roadRetireAge}세에 <strong className="text-gray-600">{fmt(road.peak)}</strong>, 이후 매달 {fmt(roadMonthlyNet)}씩 받아 {road.depletionAge}세에 소진됩니다.
               </p>
+            </div>
+
+            {/* 단계별 요약 */}
+            <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+              <h3 className="text-sm font-semibold text-gray-800 mb-3">단계별 요약</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-3">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                    <p className="text-xs font-semibold text-emerald-700">① 적립 단계</p>
+                    <span className="ml-auto text-[11px] text-gray-400">{roadCurrentAge}~{roadRetireAge}세 · {roadAccYears}년</span>
+                  </div>
+                  <dl className="space-y-1.5">
+                    <div className="flex justify-between text-xs"><dt className="text-gray-500">총 납입</dt><dd className="font-semibold text-gray-700">{fmt(roadTotalContrib)}</dd></div>
+                    <div className="flex justify-between text-xs"><dt className="text-gray-500">운용 수익</dt><dd className="font-semibold text-emerald-600">+{fmt(roadAccProfit)}</dd></div>
+                    <div className="flex justify-between text-xs border-t border-emerald-100 pt-1.5"><dt className="text-gray-500">도달 자산</dt><dd className="font-bold text-gray-900">{fmt(road.peak)}</dd></div>
+                  </dl>
+                </div>
+                <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-3">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-400" />
+                    <p className="text-xs font-semibold text-blue-700">② 수령 단계</p>
+                    <span className="ml-auto text-[11px] text-gray-400">{roadRetireAge}~{road.depletionAge}세 · {roadWithdrawYears}년</span>
+                  </div>
+                  <dl className="space-y-1.5">
+                    <div className="flex justify-between text-xs"><dt className="text-gray-500">월 수령(세후)</dt><dd className="font-semibold text-gray-700">{fmt(roadMonthlyNet)}</dd></div>
+                    <div className="flex justify-between text-xs"><dt className="text-gray-500">총 수령(세후)</dt><dd className="font-semibold text-blue-600">{fmt(roadTotalNet)}</dd></div>
+                    <div className="flex justify-between text-xs border-t border-blue-100 pt-1.5"><dt className="text-gray-500">소진 나이</dt><dd className="font-bold text-gray-900">{road.depletionAge}세</dd></div>
+                  </dl>
+                </div>
+              </div>
             </div>
           </div>
         </div>
