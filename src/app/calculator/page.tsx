@@ -154,6 +154,14 @@ export default function CalculatorPage() {
   const [inflation, setInflation] = useState(2.5);
   const realValue = (nominal: number, yrs: number) => nominal / Math.pow(1 + inflation / 100, yrs);
 
+  // 탭 연결: 적립 결과를 연금 수령으로 이어보기
+  const [linkedFrom, setLinkedFrom] = useState<null | "accumulate" | "target">(null);
+  const linkToPension = (fundWon: number, from: "accumulate" | "target") => {
+    setPensionFund(Math.min(200_000, Math.max(1_000, Math.round(fundWon / 10_000))));
+    setLinkedFrom(from);
+    setMode("pension");
+  };
+
   // ── 적립식 계산 ──
   const seedWon   = seed * 10_000;
   const sim       = useMemo(() => simulate(seedWon, monthly * 10_000, rate, years, stepUp, ter), [seedWon, monthly, rate, years, stepUp, ter]);
@@ -336,6 +344,18 @@ export default function CalculatorPage() {
               </div>
             </div>
 
+            {(isAccum ? fv > 0 : (validTarget || seedSuffices)) && (
+              <button
+                onClick={() => linkToPension(isAccum ? fv : targetWon, isAccum ? "accumulate" : "target")}
+                className="w-full flex items-center justify-between gap-3 px-5 py-3 bg-blue-50 border border-blue-100 rounded-2xl hover:bg-blue-100 active:bg-blue-200 transition-colors text-left"
+              >
+                <span className="text-sm text-blue-900">
+                  이렇게 모은 <strong>{fmt(isAccum ? fv : targetWon)}</strong>, 연금으로 받으면 매달 얼마?
+                </span>
+                <span className="text-blue-600 text-sm font-semibold whitespace-nowrap">연금 수령 →</span>
+              </button>
+            )}
+
             <div className="bg-white border border-gray-200 rounded-2xl px-5 pt-4 pb-3 shadow-sm">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-sm font-semibold text-gray-700">연도별 자산 성장</p>
@@ -481,11 +501,19 @@ export default function CalculatorPage() {
 
       {/* ── 연금 수령 시뮬레이션 ── */}
       {isPension && (
+        <>
+        {linkedFrom && (
+          <div className="flex items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-900">
+            <span className="text-blue-500">↪</span>
+            <span><strong>{linkedFrom === "accumulate" ? "적립식 계산" : "목표 역산"}</strong>에서 가져온 적립금 {fmt(pensionFund * 10_000)} 기준으로 시뮬레이션합니다.</span>
+            <button onClick={() => setMode(linkedFrom)} className="ml-auto text-blue-600 font-semibold whitespace-nowrap hover:underline">적립 단계로 ↩</button>
+          </div>
+        )}
         <div className="flex flex-col gap-3 md:grid md:grid-cols-[5fr_7fr]">
           {/* 왼쪽: 입력 */}
           <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
             <h2 className="font-semibold text-gray-900">수령 조건 설정</h2>
-            <SliderInput label="예상 적립금"        value={pensionFund}  onChange={setPensionFund}  min={1000}  max={200000} step={1000} unit="만원" tickLeft="1,000만원" tickRight="20억원" />
+            <SliderInput label="예상 적립금"        value={pensionFund}  onChange={(v) => { setPensionFund(v); setLinkedFrom(null); }}  min={1000}  max={200000} step={1000} unit="만원" tickLeft="1,000만원" tickRight="20억원" />
             <SliderInput label="수령 시작 나이"      value={pensionAge}   onChange={setPensionAge}   min={55}    max={80}     step={1}    unit="세"   tickLeft="55세"      tickRight="80세" />
             <SliderInput label="수령 기간"           value={pensionYears} onChange={setPensionYears} min={5}     max={30}     step={1}    unit="년"   tickLeft="5년"       tickRight="30년" />
             <SliderInput label="연금 운용 수익률"    value={pensionRate}  onChange={setPensionRate}  min={0}     max={7}      step={0.5}  unit="%"    tickLeft="0%"        tickRight="7%" />
@@ -598,6 +626,7 @@ export default function CalculatorPage() {
             </div>
           </div>
         </div>
+        </>
       )}
 
       <p className="text-xs text-gray-400 text-center pb-1">
