@@ -31,8 +31,12 @@ function formatDate(iso: string, mini: boolean): string {
 }
 
 function formatYTick(v: number, dp: number): string {
-  if (v >= 10000) return (v / 1000).toFixed(0) + "K";
-  if (v >= 1000)  return (v / 1000).toFixed(1) + "K";
+  // 1천 이상은 K 단위. 천 단위를 버리면(예: 14000·14200·14400 → 모두 "14K")
+  // 틱이 같은 라벨로 뭉개지므로, 정수가 아니면 소수 1자리로 정확히 표기
+  if (v >= 1000) {
+    const k = v / 1000;
+    return `${Number.isInteger(k) ? k : k.toFixed(1)}K`;
+  }
   return v.toFixed(dp);
 }
 
