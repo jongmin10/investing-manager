@@ -3,10 +3,10 @@
 import { useState, useMemo } from "react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Cell,
+  BarChart, Bar, Cell, ReferenceLine,
 } from "recharts";
 
-type Mode = "accumulate" | "target" | "tax" | "pension";
+type Mode = "accumulate" | "target" | "tax" | "pension" | "roadmap";
 
 // ── 복리 시뮬레이션 (월 단위) ─────────────────────────────
 //  seedWon  : 기존 적립금/초기 일시금
@@ -76,6 +76,39 @@ function genAnnuityChart(pv: number, annualRate: number, years: number) {
       잔액: Math.max(0, Math.round(balance / 10_000)),
     };
   });
+}
+
+// ── 연금 로드맵 (적립기 → 수령기 통합 타임라인) ───────────
+type RoadRow = { age: number; 적립자산: number | null; 수령잔액: number | null };
+function genRoadmap(
+  currentAge: number, retireAge: number, seedWon: number, monthlyPmt: number,
+  accRate: number, stepUpPct: number, terPct: number,
+  withdrawYears: number, withdrawRate: number,
+): { data: RoadRow[]; peak: number; grossMonthly: number; depletionAge: number } {
+  const accYears = Math.max(0, retireAge - currentAge);
+  const rAcc = (accRate - terPct) / 100 / 12;
+  const g = stepUpPct / 100;
+  const data: RoadRow[] = [];
+  let bal = seedWon;
+  data.push({ age: currentAge, 적립자산: Math.round(bal / 10_000), 수령잔액: null });
+  for (let y = 0; y < accYears; y++) {
+    const pmt = monthlyPmt * Math.pow(1 + g, y);
+    for (let m = 0; m < 12; m++) bal = bal * (1 + rAcc) + pmt;
+    data.push({ age: currentAge + y + 1, 적립자산: Math.round(bal / 10_000), 수령잔액: null });
+  }
+  const peak = bal;
+  // 경계점(은퇴 시점)에 수령잔액도 채워 두 영역을 연결
+  if (data.length) data[data.length - 1].수령잔액 = Math.round(peak / 10_000);
+  // 수령기
+  const rW = withdrawRate / 100 / 12;
+  const n = withdrawYears * 12;
+  const grossMonthly = rW === 0 ? peak / n : peak * rW / (1 - Math.pow(1 + rW, -n));
+  let wbal = peak;
+  for (let w = 0; w < withdrawYears; w++) {
+    for (let m = 0; m < 12; m++) wbal = wbal * (1 + rW) - grossMonthly;
+    data.push({ age: retireAge + w + 1, 적립자산: null, 수령잔액: Math.round(Math.max(0, wbal) / 10_000) });
+  }
+  return { data, peak, grossMonthly, depletionAge: retireAge + withdrawYears };
 }
 
 // ── 공통 유틸 ─────────────────────────────────────────────
@@ -149,6 +182,15 @@ export default function CalculatorPage() {
   const [pensionAge,    setPensionAge]    = useState(60);
   const [pensionYears,  setPensionYears]  = useState(20);
   const [pensionRate,   setPensionRate]   = useState(3);
+
+  // 연금 로드맵 (적립기 → 수령기 통합)
+  const [roadCurrentAge,   setRoadCurrentAge]   = useState(40);
+  const [roadRetireAge,    setRoadRetireAge]    = useState(60);
+  const [roadSeed,         setRoadSeed]         = useState(5000);  // 만원
+  const [roadMonthly,      setRoadMonthly]      = useState(50);    // 만원
+  const [roadAccRate,      setRoadAccRate]      = useState(7);
+  const [roadWithdrawYears, setRoadWithdrawYears] = useState(25);
+  const [roadWithdrawRate, setRoadWithdrawRate] = useState(3);
 
   // 인플레이션 (실질가치 환산용)
   const [inflation, setInflation] = useState(2.5);
@@ -225,12 +267,25 @@ export default function CalculatorPage() {
   const annuityTotalTax = annualTax * pensionYears;
   const taxSaving       = lumpTax - annuityTotalTax;
 
+  // ── 연금 로드맵 계산 ──
+  const road = useMemo(
+    () => genRoadmap(roadCurrentAge, roadRetireAge, roadSeed * 10_000, roadMonthly * 10_000, roadAccRate, 0, 0, roadWithdrawYears, roadWithdrawRate),
+    [roadCurrentAge, roadRetireAge, roadSeed, roadMonthly, roadAccRate, roadWithdrawYears, roadWithdrawRate]
+  );
+  const roadAccYears   = Math.max(0, roadRetireAge - roadCurrentAge);
+  const { rate: roadTaxRate } = getPensionTaxRate(roadRetireAge);
+  const roadAnnualGross = road.grossMonthly * 12;
+  const roadAnnualTax  = Math.min(roadAnnualGross, 15_000_000) * roadTaxRate + Math.max(0, roadAnnualGross - 15_000_000) * 0.165;
+  const roadMonthlyNet = road.grossMonthly - roadAnnualTax / 12;
+  const roadPeakReal   = realValue(road.peak, roadAccYears);
+
   const xInterval = (y: number) => Math.max(0, Math.ceil(y / 8) - 1);
 
-  const isAccum   = mode === "accumulate";
-  const isTarget  = mode === "target";
-  const isTax     = mode === "tax";
-  const isPension = mode === "pension";
+  const isAccum    = mode === "accumulate";
+  const isTarget   = mode === "target";
+  const isTax      = mode === "tax";
+  const isPension  = mode === "pension";
+  const isRoadmap  = mode === "roadmap";
 
   const validTarget = neededPMTMan > 0 && neededPMTMan < 10_000;
 
@@ -239,6 +294,7 @@ export default function CalculatorPage() {
     ["target",     "목표 역산"],
     ["tax",        "세액공제"],
     ["pension",    "연금 수령"],
+    ["roadmap",    "연금 로드맵"],
   ];
 
   return (
@@ -251,6 +307,7 @@ export default function CalculatorPage() {
           <p className="text-sm text-gray-400 mt-0.5">
             {isTax     ? "IRP·DC 납입액으로 연말정산 세액공제 혜택을 계산하세요."
             : isPension ? "적립금을 연금으로 수령할 때 월 수령액과 세금을 시뮬레이션하세요."
+            : isRoadmap ? "적립부터 수령까지, 평생 연금 흐름을 하나의 타임라인으로 확인하세요."
             :             "월 투자금과 기간을 설정해 미래 자산을 시뮬레이션하세요."}
           </p>
         </div>
@@ -629,11 +686,89 @@ export default function CalculatorPage() {
         </>
       )}
 
+      {/* ── 연금 로드맵 (적립기 → 수령기 통합 타임라인) ── */}
+      {isRoadmap && (
+        <div className="flex flex-col gap-3 md:grid md:grid-cols-[5fr_7fr]">
+          {/* 왼쪽: 입력 */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+            <p className="text-xs font-semibold text-emerald-600">① 적립 단계</p>
+            <SliderInput label="현재 나이"      value={roadCurrentAge} onChange={(v) => setRoadCurrentAge(Math.min(v, roadRetireAge - 1))} min={20} max={64} step={1} unit="세" tickLeft="20세" tickRight="64세" />
+            <SliderInput label="수령 시작 나이"  value={roadRetireAge}  onChange={(v) => setRoadRetireAge(Math.max(v, roadCurrentAge + 1))}  min={55} max={75} step={1} unit="세" tickLeft="55세" tickRight="75세" />
+            <SliderInput label="기존 적립금"     value={roadSeed}       onChange={setRoadSeed}       min={0}  max={50000} step={500} unit="만원" tickLeft="0" tickRight="5억원" />
+            <SliderInput label="월 납입금"       value={roadMonthly}    onChange={setRoadMonthly}    min={0}  max={500}   step={10}  unit="만원" tickLeft="0" tickRight="500만원" />
+            <SliderInput label="적립 수익률"     value={roadAccRate}    onChange={setRoadAccRate}    min={0.5} max={15}  step={0.5} unit="%" tickLeft="0.5%" tickRight="15%" />
+
+            <p className="text-xs font-semibold text-blue-600 pt-2 border-t border-gray-100">② 수령 단계</p>
+            <SliderInput label="수령 기간"       value={roadWithdrawYears} onChange={setRoadWithdrawYears} min={5} max={35} step={1}   unit="년" tickLeft="5년" tickRight="35년" />
+            <SliderInput label="수령 운용 수익률" value={roadWithdrawRate}  onChange={setRoadWithdrawRate}  min={0} max={7}  step={0.5} unit="%" tickLeft="0%" tickRight="7%" />
+
+            <SliderInput label="물가상승률 (실질가치 환산)" value={inflation} onChange={setInflation} min={0} max={6} step={0.1} unit="%" tickLeft="0%" tickRight="6%" />
+          </div>
+
+          {/* 오른쪽: 결과 + 타임라인 */}
+          <div className="space-y-3">
+            <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 px-5 py-4 text-white">
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">
+                {roadCurrentAge}세부터 {roadAccYears}년 적립 → {roadRetireAge}세부터 {roadWithdrawYears}년 수령
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                <div>
+                  <p className="text-[11px] text-slate-400 mb-0.5">{roadRetireAge}세 예상 자산</p>
+                  <p className="text-xl font-bold text-emerald-400">{fmt(road.peak)}</p>
+                  {inflation > 0 && <p className="text-[10px] text-amber-300/90 mt-0.5">오늘 가치 {fmt(roadPeakReal)}</p>}
+                </div>
+                <div>
+                  <p className="text-[11px] text-slate-400 mb-0.5">월 수령액 (세후)</p>
+                  <p className="text-xl font-bold text-white">{fmt(roadMonthlyNet)}</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">세전 {fmt(road.grossMonthly)}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-slate-400 mb-0.5">자산 소진 나이</p>
+                  <p className="text-xl font-bold text-white">{road.depletionAge}세</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white border border-gray-200 rounded-2xl px-5 pt-4 pb-3 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-semibold text-gray-700">평생 자산 흐름</p>
+                <div className="flex gap-3">
+                  <div className="flex items-center gap-1 text-xs text-gray-500"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-300" />적립기</div>
+                  <div className="flex items-center gap-1 text-xs text-gray-500"><span className="w-2.5 h-2.5 rounded-sm bg-blue-300" />수령기</div>
+                </div>
+              </div>
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={road.data} margin={{ top: 2, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="age" type="number" domain={["dataMin", "dataMax"]} tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}세`} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => v >= 10_000 ? `${(v / 10_000).toFixed(0)}억` : `${v}만`} width={46} />
+                    <Tooltip
+                      formatter={((v: number | undefined, name: string) => [`${(v ?? 0).toLocaleString()}만원`, name]) as any}
+                      labelFormatter={(l) => `${l}세`}
+                      labelStyle={{ fontWeight: 600, fontSize: 12 }} contentStyle={{ fontSize: 12 }}
+                    />
+                    <ReferenceLine x={roadRetireAge} stroke="#94a3b8" strokeDasharray="4 4" label={{ value: "은퇴", fontSize: 11, fill: "#64748b", position: "top" }} />
+                    <Area type="monotone" dataKey="적립자산" stroke="#10b981" fill="#d1fae5" strokeWidth={2} connectNulls={false} />
+                    <Area type="monotone" dataKey="수령잔액" stroke="#3b82f6" fill="#dbeafe" strokeWidth={2} connectNulls={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
+                {roadCurrentAge}세에 {fmt(roadSeed * 10_000)}로 시작해 매달 {roadMonthly}만원씩 {roadAccYears}년 적립하면 {roadRetireAge}세에 <strong className="text-gray-600">{fmt(road.peak)}</strong>, 이후 매달 {fmt(roadMonthlyNet)}씩 받아 {road.depletionAge}세에 소진됩니다.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <p className="text-xs text-gray-400 text-center pb-1">
         {isTax
           ? "세액공제액은 소득세 기준 추정치입니다. 지방소득세 포함 여부, 과세표준에 따라 실제 환급액이 다를 수 있습니다."
           : isPension
           ? "연금소득세는 분리과세 기준 추정치입니다. 연 1,500만원 초과 시 종합과세 대상이 될 수 있으며, 실제 세금은 다를 수 있습니다."
+          : isRoadmap
+          ? "적립·수령 수익률을 일정하게 가정한 단순 추정입니다. 실제 수익률 변동·물가·세금에 따라 결과가 달라질 수 있습니다."
           : "복리 원리 기반 시뮬레이션 · 실제 투자 결과와 다를 수 있습니다."}
       </p>
     </div>

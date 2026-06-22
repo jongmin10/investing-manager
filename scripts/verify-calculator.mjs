@@ -4,7 +4,7 @@ import { mkdirSync } from "fs";
 const OUT = "scripts/_calc-shots";
 mkdirSync(OUT, { recursive: true });
 
-const TABS = ["적립식 계산", "목표 역산", "세액공제", "연금 수령"];
+const TABS = ["적립식 계산", "목표 역산", "세액공제", "연금 수령", "연금 로드맵"];
 const VIEWPORTS = [
   { name: "desktop", width: 1280, height: 1400 },
   { name: "mobile", width: 390, height: 1600 },
