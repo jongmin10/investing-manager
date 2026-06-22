@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Cell, ReferenceLine,
+  ReferenceLine,
 } from "recharts";
 
 type Mode = "accumulate" | "target" | "tax" | "pension" | "roadmap";
@@ -294,12 +294,6 @@ export default function CalculatorPage() {
     () => genAnnuityChart(pensionPV, pensionRate, pensionYears),
     [pensionPV, pensionRate, pensionYears]
   );
-  // 일시금(중도해지) vs 연금 비교 — IRP 세액공제·운용수익 재원 기준
-  // 일시금/중도해지: 기타소득세 16.5% / 연금: 위 연금소득세 누계
-  const LUMP_TAX_RATE   = 0.165;
-  const lumpTax         = pensionPV * LUMP_TAX_RATE;
-  const annuityTotalTax = annualTax * pensionYears;
-  const taxSaving       = lumpTax - annuityTotalTax;
 
   // ── 연금 로드맵 계산 ──
   const road = useMemo(
@@ -658,53 +652,6 @@ export default function CalculatorPage() {
                   ⚠ 연간 수령액이 1,500만원 초과 시 종합과세 또는 16.5% 분리과세 선택 적용됩니다.
                 </div>
               )}
-            </div>
-
-            {/* 일시금 vs 연금 세금 비교 */}
-            <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
-              <h3 className="text-sm font-semibold text-gray-800 mb-1">일시금 vs 연금 수령 비교</h3>
-              <p className="text-[11px] text-gray-400 mb-3">세액공제·운용수익 재원 기준 — 일시금/중도해지 기타소득세 16.5% vs 연금소득세 누계</p>
-              <div className="h-32">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={[
-                      { name: "일시금/중도해지", 세금: Math.round(lumpTax / 10_000), color: "#ef4444" },
-                      { name: "연금 수령", 세금: Math.round(annuityTotalTax / 10_000), color: "#3b82f6" },
-                    ]}
-                    layout="vertical"
-                    margin={{ top: 0, right: 60, left: 10, bottom: 0 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                    <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}만`} />
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={92} />
-                    <Tooltip formatter={((v: number | undefined) => [`${(v ?? 0).toLocaleString()}만원`, "납부 세금"]) as any} />
-                    <Bar dataKey="세금" radius={[0, 4, 4, 0]}>
-                      {[{ color: "#ef4444" }, { color: "#3b82f6" }].map((entry, i) => (
-                        <Cell key={i} fill={entry.color} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              {taxSaving > 0 ? (
-                <div className="mt-3 flex items-center gap-2 px-4 py-2.5 bg-emerald-50 border border-emerald-100 rounded-xl">
-                  <span className="text-emerald-600 text-lg">✓</span>
-                  <p className="text-xs text-emerald-800">
-                    연금 수령 시 일시금 대비 <strong>{fmt(taxSaving)}</strong> 세금 절감 추정
-                  </p>
-                </div>
-              ) : isOverAnnualLimit ? (
-                <div className="mt-3 flex items-start gap-2 px-4 py-2.5 bg-amber-50 border border-amber-100 rounded-xl">
-                  <span className="text-amber-600 text-base leading-none mt-0.5">!</span>
-                  <p className="text-xs text-amber-800 leading-relaxed">
-                    연 수령액이 <strong>1,500만원을 초과</strong>해 연금소득세도 전액 16.5%가 적용 → 일시금 대비 절세 효과가 사라집니다.
-                    <strong> 수령 기간을 늘려 연 1,500만원 이하</strong>로 낮추면 3.3~5.5% 저율과세를 받습니다.
-                  </p>
-                </div>
-              ) : null}
-              <p className="mt-2 text-[11px] text-gray-400 leading-relaxed">
-                ※ 퇴직금 재원은 <strong>퇴직소득세</strong>가 적용되며, 연금으로 수령하면 퇴직소득세를 30%(10년 이내)~40%(11년 이상) 감면받습니다. 위 비교는 세액공제·운용수익 재원 기준입니다.
-              </p>
             </div>
 
             {/* 잔액 추이 차트 */}
