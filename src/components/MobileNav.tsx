@@ -13,7 +13,7 @@ const PRIMARY_TABS = [
 
 const MORE_ITEMS = [
   { href: "/tracker",            icon: "📈", label: "수익률 트래커" },
-  { href: "/calculator",         icon: "🧮", label: "복리 계산기"  },
+  { href: "/calculator",         icon: "🧮", label: "연금 계산기"  },
   { href: "/journal",            icon: "📔", label: "투자 일기"    },
   { href: "/gurus",              icon: "🏆", label: "대가 13F"     },
   { href: "/screener/watchlist", icon: "★",  label: "관심종목"     },

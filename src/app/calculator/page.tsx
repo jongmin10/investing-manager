@@ -334,7 +334,7 @@ export default function CalculatorPage() {
 
       {/* ── 헤더 ── */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">복리 계산기</h1>
+        <h1 className="text-2xl font-bold text-gray-900">연금 계산기</h1>
         <p className="text-sm text-gray-400 mt-0.5">
           {isTax     ? "IRP·DC 납입액으로 연말정산 세액공제 혜택을 계산하세요."
           : isPension ? "적립금을 연금으로 수령할 때 월 수령액과 세금을 시뮬레이션하세요."
