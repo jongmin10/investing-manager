@@ -8,27 +8,33 @@ import {
 
 type Mode = "accumulate" | "target" | "tax" | "pension";
 
-// ── 복리 계산 ─────────────────────────────────────────────
-function calcFV(monthlyPmt: number, annualRate: number, years: number): number {
+// ── 복리 계산 (seedWon = 기존 적립금/초기 일시금) ──────────
+function calcFV(seedWon: number, monthlyPmt: number, annualRate: number, years: number): number {
   const r = annualRate / 100 / 12;
   const n = years * 12;
-  if (r === 0) return monthlyPmt * n;
-  return monthlyPmt * ((Math.pow(1 + r, n) - 1) / r);
+  const seedFV = seedWon * Math.pow(1 + r, n);
+  const pmtFV = r === 0 ? monthlyPmt * n : monthlyPmt * ((Math.pow(1 + r, n) - 1) / r);
+  return seedFV + pmtFV;
 }
 
-function calcPMT(targetFV: number, annualRate: number, years: number): number {
+// 목표 달성에 필요한 월 납입액 (시드머니 복리 성장분 차감 후 역산)
+function calcPMT(seedWon: number, targetFV: number, annualRate: number, years: number): number {
   const r = annualRate / 100 / 12;
   const n = years * 12;
-  if (r === 0) return targetFV / n;
-  return targetFV * r / (Math.pow(1 + r, n) - 1);
+  const remaining = targetFV - seedWon * Math.pow(1 + r, n);
+  if (remaining <= 0) return 0; // 기존 적립금만으로 목표 달성
+  if (r === 0) return remaining / n;
+  return remaining * r / (Math.pow(1 + r, n) - 1);
 }
 
-function genYearlyData(monthlyPmt: number, annualRate: number, years: number) {
+function genYearlyData(seedWon: number, monthlyPmt: number, annualRate: number, years: number) {
   const r = annualRate / 100 / 12;
   return Array.from({ length: years }, (_, i) => {
     const n = (i + 1) * 12;
-    const fv = r === 0 ? monthlyPmt * n : monthlyPmt * ((Math.pow(1 + r, n) - 1) / r);
-    const principal = monthlyPmt * n;
+    const seedFV = seedWon * Math.pow(1 + r, n);
+    const pmtFV = r === 0 ? monthlyPmt * n : monthlyPmt * ((Math.pow(1 + r, n) - 1) / r);
+    const fv = seedFV + pmtFV;
+    const principal = seedWon + monthlyPmt * n;
     return {
       year: `${i + 1}년`,
       원금: Math.round(principal / 10_000),
@@ -122,11 +128,13 @@ export default function CalculatorPage() {
   const [mode, setMode] = useState<Mode>("accumulate");
 
   // 적립식
+  const [seed,    setSeed]    = useState(0); // 기존 적립금(만원)
   const [monthly, setMonthly] = useState(50);
   const [years,   setYears]   = useState(20);
   const [rate,    setRate]    = useState(7);
 
   // 목표 역산
+  const [targetSeed,  setTargetSeed]  = useState(0); // 기존 적립금(만원)
   const [targetMan,   setTargetMan]   = useState(10000);
   const [targetYears, setTargetYears] = useState(20);
   const [targetRate,  setTargetRate]  = useState(7);
@@ -135,6 +143,8 @@ export default function CalculatorPage() {
   const [grossIncome, setGrossIncome] = useState(5000);
   const [irpAmount,   setIrpAmount]   = useState(300);
   const [dcAmount,    setDcAmount]    = useState(0);
+  const [reinvestYears, setReinvestYears] = useState(10); // 환급금 재투자 기간
+  const [reinvestRate,  setReinvestRate]  = useState(6);  // 환급금 재투자 수익률
 
   // 연금 수령
   const [pensionFund,   setPensionFund]   = useState(30000); // 만원
@@ -147,20 +157,23 @@ export default function CalculatorPage() {
   const realValue = (nominal: number, yrs: number) => nominal / Math.pow(1 + inflation / 100, yrs);
 
   // ── 적립식 계산 ──
-  const fv        = useMemo(() => calcFV(monthly * 10_000, rate, years), [monthly, rate, years]);
-  const principal = monthly * 10_000 * years * 12;
+  const seedWon   = seed * 10_000;
+  const fv        = useMemo(() => calcFV(seedWon, monthly * 10_000, rate, years), [seedWon, monthly, rate, years]);
+  const principal = seedWon + monthly * 10_000 * years * 12;
   const profit    = fv - principal;
   const returnPct = principal > 0 ? (profit / principal) * 100 : 0;
-  const chartData = useMemo(() => genYearlyData(monthly * 10_000, rate, years), [monthly, rate, years]);
+  const chartData = useMemo(() => genYearlyData(seedWon, monthly * 10_000, rate, years), [seedWon, monthly, rate, years]);
 
   // ── 목표 역산 계산 ──
-  const neededPMT    = useMemo(() => calcPMT(targetMan * 10_000, targetRate, targetYears), [targetMan, targetRate, targetYears]);
+  const targetSeedWon = targetSeed * 10_000;
+  const neededPMT    = useMemo(() => calcPMT(targetSeedWon, targetMan * 10_000, targetRate, targetYears), [targetSeedWon, targetMan, targetRate, targetYears]);
   const neededPMTMan = Math.ceil(neededPMT / 10_000);
   const totalPaid    = neededPMTMan * 10_000 * targetYears * 12;
-  const targetProfit = targetMan * 10_000 - totalPaid;
+  const targetProfit = targetMan * 10_000 - totalPaid - targetSeedWon;
+  const seedSuffices = neededPMT === 0 && targetSeedWon > 0; // 기존 적립금만으로 목표 달성
   const targetChart  = useMemo(
-    () => genYearlyData(neededPMTMan * 10_000, targetRate, targetYears),
-    [neededPMTMan, targetRate, targetYears]
+    () => genYearlyData(targetSeedWon, neededPMTMan * 10_000, targetRate, targetYears),
+    [targetSeedWon, neededPMTMan, targetRate, targetYears]
   );
 
   // ── 세액공제 계산 ──
@@ -169,6 +182,14 @@ export default function CalculatorPage() {
     [irpAmount, dcAmount, grossIncome]
   );
   const isOverLimit = irpAmount + dcAmount > TAX_DEDUCTION_LIMIT_MAN;
+
+  // ── 환급금 재투자 복리 효과 ──
+  // 매년 받는 세액공제 환급금을 연 단위로 재투자(매년 말 납입) 했을 때
+  const reinvestSum = tax.deductionWon * reinvestYears; // 단순 누적
+  const reinvestFV  = reinvestRate === 0
+    ? reinvestSum
+    : tax.deductionWon * ((Math.pow(1 + reinvestRate / 100, reinvestYears) - 1) / (reinvestRate / 100));
+  const reinvestProfit = reinvestFV - reinvestSum;
 
   // ── 연금 수령 계산 ──
   const pensionPV         = pensionFund * 10_000;
@@ -248,12 +269,14 @@ export default function CalculatorPage() {
             </h2>
             {isAccum ? (
               <>
+                <SliderInput label="기존 적립금 (시드머니)" value={seed}    onChange={setSeed}    min={0}    max={50000}  step={500} unit="만원" tickLeft="0"         tickRight="5억원" />
                 <SliderInput label="월 투자금"       value={monthly} onChange={setMonthly} min={10}   max={500}    step={10}  unit="만원" tickLeft="10만원"    tickRight="500만원" />
                 <SliderInput label="투자 기간"        value={years}   onChange={setYears}   min={1}    max={40}     step={1}   unit="년"   tickLeft="1년"        tickRight="40년" />
                 <SliderInput label="연 수익률 (CAGR)" value={rate}    onChange={setRate}    min={0.5}  max={25}     step={0.5} unit="%"    tickLeft="0.5%"       tickRight="25%" />
               </>
             ) : (
               <>
+                <SliderInput label="기존 적립금 (시드머니)" value={targetSeed}  onChange={setTargetSeed}  min={0}    max={50000}  step={500}  unit="만원" tickLeft="0"         tickRight="5억원" />
                 <SliderInput label="목표 금액"        value={targetMan}   onChange={setTargetMan}   min={1000} max={100000} step={1000} unit="만원" tickLeft="1,000만원" tickRight="10억원" />
                 <SliderInput label="투자 기간"         value={targetYears} onChange={setTargetYears} min={1}    max={40}     step={1}    unit="년"   tickLeft="1년"       tickRight="40년" />
                 <SliderInput label="연 수익률 (CAGR)"  value={targetRate}  onChange={setTargetRate}  min={0.5}  max={25}     step={0.5}  unit="%"    tickLeft="0.5%"      tickRight="25%" />
@@ -277,10 +300,12 @@ export default function CalculatorPage() {
                   <div><p className="text-[11px] text-slate-400 mb-0.5">총 투자금</p><p className="text-xl font-bold text-white">{fmt(principal)}</p></div>
                   <div><p className="text-[11px] text-slate-400 mb-0.5">수익금</p><p className="text-xl font-bold text-emerald-400">+{fmt(profit)}</p></div>
                 </div>
+              ) : seedSuffices ? (
+                <p className="text-sm text-emerald-300 font-medium">✓ 기존 적립금 {fmt(targetSeedWon)}의 복리 성장만으로 목표를 달성합니다. 추가 납입이 필요 없습니다.</p>
               ) : validTarget ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   <div><p className="text-[11px] text-slate-400 mb-0.5">월 투자금</p><p className="text-xl font-bold text-emerald-400">{fmt(neededPMTMan * 10_000)}</p></div>
-                  <div><p className="text-[11px] text-slate-400 mb-0.5">총 납입금</p><p className="text-xl font-bold text-white">{fmt(totalPaid)}</p></div>
+                  <div><p className="text-[11px] text-slate-400 mb-0.5">총 납입금</p><p className="text-xl font-bold text-white">{fmt(totalPaid)}{targetSeedWon > 0 && <span className="text-[11px] text-slate-400 font-normal"> +시드 {fmt(targetSeedWon)}</span>}</p></div>
                   <div><p className="text-[11px] text-slate-400 mb-0.5">예상 수익금</p><p className="text-xl font-bold text-emerald-400">+{fmt(Math.max(0, targetProfit))}</p></div>
                 </div>
               ) : (
@@ -423,6 +448,24 @@ export default function CalculatorPage() {
                   <span>900만원</span>
                 </div>
               </div>
+            </div>
+
+            {/* 환급금 재투자 복리 효과 */}
+            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-800">환급금 재투자 복리 효과</h3>
+                <p className="text-[11px] text-gray-400 mt-0.5">매년 받는 환급금({fmt(tax.deductionWon)})을 재투자하면 세액공제가 복리로 불어납니다.</p>
+              </div>
+              <SliderInput label="재투자 기간"   value={reinvestYears} onChange={setReinvestYears} min={1} max={40} step={1}   unit="년" tickLeft="1년" tickRight="40년" />
+              <SliderInput label="재투자 수익률" value={reinvestRate}  onChange={setReinvestRate}  min={0} max={15} step={0.5} unit="%"  tickLeft="0%"  tickRight="15%" />
+              <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-100">
+                <div><p className="text-[11px] text-gray-400 mb-0.5">누적 환급금</p><p className="text-sm font-bold text-gray-700">{fmt(reinvestSum)}</p></div>
+                <div><p className="text-[11px] text-gray-400 mb-0.5">재투자 후 자산</p><p className="text-sm font-bold text-blue-600">{fmt(reinvestFV)}</p></div>
+                <div><p className="text-[11px] text-gray-400 mb-0.5">추가 복리수익</p><p className="text-sm font-bold text-emerald-600">+{fmt(reinvestProfit)}</p></div>
+              </div>
+              <p className="text-[11px] text-gray-400 leading-relaxed">
+                연 {fmt(tax.deductionWon)} 환급금을 {reinvestYears}년간 연 {reinvestRate}%로 재투자한 결과입니다. 환급금을 다시 IRP에 납입하면 추가 세액공제까지 받을 수 있습니다.
+              </p>
             </div>
           </div>
         </div>
