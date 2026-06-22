@@ -161,12 +161,12 @@ function SliderInput({
 }) {
   return (
     <div>
-      <div className="flex justify-between items-center mb-2">
+      <div className="flex justify-between items-center mb-1.5">
         <label className="text-sm font-medium text-gray-700">{label}</label>
         <div className="flex items-center gap-1.5">
           <NumberField
             value={value} onChange={onChange} min={min} max={max} step={step}
-            className="w-24 border border-gray-200 rounded-lg px-2 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-300"
+            className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-300"
           />
           <span className="text-sm text-gray-500 whitespace-nowrap shrink-0">{unit}</span>
         </div>
@@ -176,7 +176,7 @@ function SliderInput({
         onChange={(e) => onChange(Number(e.target.value))}
         className="w-full accent-blue-500"
       />
-      <div className="flex justify-between text-xs text-gray-400 mt-1">
+      <div className="flex justify-between text-[11px] text-gray-400 mt-0.5">
         <span>{tickLeft}</span><span>{tickRight}</span>
       </div>
     </div>
@@ -361,7 +361,7 @@ export default function CalculatorPage() {
       {/* ── 적립식 / 목표 역산 ── */}
       {(isAccum || isTarget) && (
         <div className="flex flex-col gap-3 md:grid md:grid-cols-[5fr_7fr]">
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3">
             <h2 className="font-semibold text-gray-900">
               {isAccum ? "투자 설정" : "목표 설정"}
             </h2>
@@ -380,7 +380,7 @@ export default function CalculatorPage() {
                 <SliderInput label="연 수익률 (CAGR)"  value={targetRate}  onChange={setTargetRate}  min={0.5}  max={25}     step={0.5}  unit="%"    tickLeft="0.5%"      tickRight="25%" />
               </>
             )}
-            <div className="pt-1 border-t border-gray-100 space-y-4">
+            <div className="pt-1 border-t border-gray-100 space-y-3">
               <SliderInput label="매년 납입 증액 (급여 상승 반영)" value={stepUp}    onChange={setStepUp}    min={0} max={15} step={1}   unit="%" tickLeft="0%" tickRight="15%" />
               <SliderInput label="운용보수 (연 TER)"            value={ter}       onChange={setTer}       min={0} max={2}  step={0.1} unit="%" tickLeft="0%" tickRight="2%" />
               <SliderInput label="물가상승률 (실질가치 환산)"    value={inflation} onChange={setInflation} min={0} max={6}  step={0.1} unit="%" tickLeft="0%" tickRight="6%" />
@@ -473,7 +473,7 @@ export default function CalculatorPage() {
       {/* ── 세액공제 계산기 ── */}
       {isTax && (
         <div className="flex flex-col gap-3 md:grid md:grid-cols-[5fr_7fr]">
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-5">
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
             <h2 className="font-semibold text-gray-900">납입 정보</h2>
 
             <div>
@@ -482,7 +482,7 @@ export default function CalculatorPage() {
                 <div className="flex items-center gap-1.5">
                   <NumberField
                     value={grossIncome} onChange={setGrossIncome} min={1000} max={100000} step={100}
-                    className="w-24 border border-gray-200 rounded-lg px-2 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-300"
                   />
                   <span className="text-sm text-gray-500 whitespace-nowrap shrink-0">만원</span>
                 </div>
@@ -599,7 +599,7 @@ export default function CalculatorPage() {
         )}
         <div className="flex flex-col gap-3 md:grid md:grid-cols-[5fr_7fr]">
           {/* 왼쪽: 입력 */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3">
             <h2 className="font-semibold text-gray-900">수령 조건 설정</h2>
             <SliderInput label="예상 적립금"        value={pensionFund}  onChange={(v) => { setPensionFund(v); setLinkedFrom(null); }}  min={1000}  max={200000} step={1000} unit="만원" tickLeft="1,000만원" tickRight="20억원" />
             <SliderInput label="수령 시작 나이"      value={pensionAge}   onChange={setPensionAge}   min={55}    max={80}     step={1}    unit="세"   tickLeft="55세"      tickRight="80세" />
@@ -721,7 +721,7 @@ export default function CalculatorPage() {
       {isRoadmap && (
         <div className="flex flex-col gap-3 md:grid md:grid-cols-[5fr_7fr]">
           {/* 왼쪽: 입력 */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3">
             <p className="text-xs font-semibold text-emerald-600">① 적립 단계</p>
             <SliderInput label="현재 나이"      value={roadCurrentAge} onChange={(v) => setRoadCurrentAge(Math.min(v, roadRetireAge - 1))} min={20} max={64} step={1} unit="세" tickLeft="20세" tickRight="64세" />
             <SliderInput label="수령 시작 나이"  value={roadRetireAge}  onChange={(v) => setRoadRetireAge(Math.max(v, roadCurrentAge + 1))}  min={55} max={75} step={1} unit="세" tickLeft="55세" tickRight="75세" />
@@ -768,7 +768,7 @@ export default function CalculatorPage() {
                   <div className="flex items-center gap-1 text-xs text-gray-500"><span className="w-2.5 h-2.5 rounded-sm bg-blue-300" />수령기</div>
                 </div>
               </div>
-              <div className="h-56">
+              <div className="h-72 sm:h-80">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={road.data} margin={{ top: 2, right: 8, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
