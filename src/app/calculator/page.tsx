@@ -279,15 +279,17 @@ export default function CalculatorPage() {
   const monthlyGross      = useMemo(() => calcAnnuityPMT(pensionPV, pensionRate, pensionYears), [pensionPV, pensionRate, pensionYears]);
   const { rate: taxRate, label: taxLabel } = getPensionTaxRate(pensionAge);
   const annualGross       = monthlyGross * 12;
-  // 연금소득세: 연 1,500만원까지 저율 분리과세, 초과분은 16.5% 분리과세 선택 가정
+  // 연금소득세: 연 1,500만원 이하면 저율 분리과세(3.3~5.5%),
+  // 초과하면 "전액"에 대해 16.5% 분리과세(또는 종합과세) 선택 — 초과분만이 아니라 전액
   const PENSION_SEP_LIMIT = 15_000_000;
-  const annualTax         = Math.min(annualGross, PENSION_SEP_LIMIT) * taxRate
-                          + Math.max(0, annualGross - PENSION_SEP_LIMIT) * 0.165;
+  const isOverAnnualLimit = annualGross > PENSION_SEP_LIMIT;
+  const effTaxRate        = isOverAnnualLimit ? 0.165 : taxRate;
+  const effTaxLabel       = isOverAnnualLimit ? "16.5% (1,500만원 초과 분리과세)" : taxLabel;
+  const annualTax         = annualGross * effTaxRate;
   const monthlyTax        = annualTax / 12;
   const monthlyNet        = monthlyGross - monthlyTax;
   const annualNet         = annualGross - annualTax;
   const totalReceived     = monthlyNet * pensionYears * 12;
-  const isOverAnnualLimit = annualGross > PENSION_SEP_LIMIT; // 연 1,500만원 초과분 고율 과세
   const annuityChart      = useMemo(
     () => genAnnuityChart(pensionPV, pensionRate, pensionYears),
     [pensionPV, pensionRate, pensionYears]
@@ -647,7 +649,7 @@ export default function CalculatorPage() {
                 </div>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 border-t border-slate-700 pt-3">
-                <div><p className="text-[11px] text-slate-500 mb-0.5">적용 세율</p><p className="text-sm font-semibold text-slate-300">{taxLabel}</p></div>
+                <div><p className="text-[11px] text-slate-500 mb-0.5">적용 세율</p><p className="text-sm font-semibold text-slate-300">{effTaxLabel}</p></div>
                 <div><p className="text-[11px] text-slate-500 mb-0.5">수령 기간</p><p className="text-sm font-semibold text-slate-300">{pensionYears}년 ({pensionYears * 12}회)</p></div>
                 <div><p className="text-[11px] text-slate-500 mb-0.5">세후 총 수령</p><p className="text-sm font-semibold text-slate-300">{fmt(totalReceived)}</p></div>
               </div>
@@ -684,14 +686,22 @@ export default function CalculatorPage() {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-              {taxSaving > 0 && (
+              {taxSaving > 0 ? (
                 <div className="mt-3 flex items-center gap-2 px-4 py-2.5 bg-emerald-50 border border-emerald-100 rounded-xl">
                   <span className="text-emerald-600 text-lg">✓</span>
                   <p className="text-xs text-emerald-800">
                     연금 수령 시 일시금 대비 <strong>{fmt(taxSaving)}</strong> 세금 절감 추정
                   </p>
                 </div>
-              )}
+              ) : isOverAnnualLimit ? (
+                <div className="mt-3 flex items-start gap-2 px-4 py-2.5 bg-amber-50 border border-amber-100 rounded-xl">
+                  <span className="text-amber-600 text-base leading-none mt-0.5">!</span>
+                  <p className="text-xs text-amber-800 leading-relaxed">
+                    연 수령액이 <strong>1,500만원을 초과</strong>해 연금소득세도 전액 16.5%가 적용 → 일시금 대비 절세 효과가 사라집니다.
+                    <strong> 수령 기간을 늘려 연 1,500만원 이하</strong>로 낮추면 3.3~5.5% 저율과세를 받습니다.
+                  </p>
+                </div>
+              ) : null}
               <p className="mt-2 text-[11px] text-gray-400 leading-relaxed">
                 ※ 퇴직금 재원은 <strong>퇴직소득세</strong>가 적용되며, 연금으로 수령하면 퇴직소득세를 30%(10년 이내)~40%(11년 이상) 감면받습니다. 위 비교는 세액공제·운용수익 재원 기준입니다.
               </p>
