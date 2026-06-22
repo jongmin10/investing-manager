@@ -8,39 +8,33 @@ import {
 
 type Mode = "accumulate" | "target" | "tax" | "pension";
 
-// ── 복리 계산 (seedWon = 기존 적립금/초기 일시금) ──────────
-function calcFV(seedWon: number, monthlyPmt: number, annualRate: number, years: number): number {
-  const r = annualRate / 100 / 12;
-  const n = years * 12;
-  const seedFV = seedWon * Math.pow(1 + r, n);
-  const pmtFV = r === 0 ? monthlyPmt * n : monthlyPmt * ((Math.pow(1 + r, n) - 1) / r);
-  return seedFV + pmtFV;
-}
-
-// 목표 달성에 필요한 월 납입액 (시드머니 복리 성장분 차감 후 역산)
-function calcPMT(seedWon: number, targetFV: number, annualRate: number, years: number): number {
-  const r = annualRate / 100 / 12;
-  const n = years * 12;
-  const remaining = targetFV - seedWon * Math.pow(1 + r, n);
-  if (remaining <= 0) return 0; // 기존 적립금만으로 목표 달성
-  if (r === 0) return remaining / n;
-  return remaining * r / (Math.pow(1 + r, n) - 1);
-}
-
-function genYearlyData(seedWon: number, monthlyPmt: number, annualRate: number, years: number) {
-  const r = annualRate / 100 / 12;
-  return Array.from({ length: years }, (_, i) => {
-    const n = (i + 1) * 12;
-    const seedFV = seedWon * Math.pow(1 + r, n);
-    const pmtFV = r === 0 ? monthlyPmt * n : monthlyPmt * ((Math.pow(1 + r, n) - 1) / r);
-    const fv = seedFV + pmtFV;
-    const principal = seedWon + monthlyPmt * n;
-    return {
-      year: `${i + 1}년`,
+// ── 복리 시뮬레이션 (월 단위) ─────────────────────────────
+//  seedWon  : 기존 적립금/초기 일시금
+//  stepUpPct: 매년 납입액 증액률(%) — 급여 상승 반영
+//  terPct   : 연 운용보수(TER, %) — 수익률에서 차감
+type SimRow = { year: string; 원금: number; 수익: number };
+function simulate(
+  seedWon: number, monthlyPmt: number, annualRate: number, years: number,
+  stepUpPct = 0, terPct = 0,
+): { fv: number; principal: number; yearly: SimRow[] } {
+  const r = (annualRate - terPct) / 100 / 12; // 보수 차감 후 월 수익률
+  const g = stepUpPct / 100;
+  let balance = seedWon;
+  let principal = seedWon;
+  const yearly: SimRow[] = [];
+  for (let y = 0; y < years; y++) {
+    const pmt = monthlyPmt * Math.pow(1 + g, y); // 해당 연도 월 납입액
+    for (let m = 0; m < 12; m++) {
+      balance = balance * (1 + r) + pmt;
+      principal += pmt;
+    }
+    yearly.push({
+      year: `${y + 1}년`,
       원금: Math.round(principal / 10_000),
-      수익: Math.round((fv - principal) / 10_000),
-    };
-  });
+      수익: Math.round((balance - principal) / 10_000),
+    });
+  }
+  return { fv: balance, principal, yearly };
 }
 
 // ── 세액공제 계산 ─────────────────────────────────────────
@@ -133,6 +127,10 @@ export default function CalculatorPage() {
   const [years,   setYears]   = useState(20);
   const [rate,    setRate]    = useState(7);
 
+  // 공통(적립식·목표역산): 납입 증액 + 운용보수
+  const [stepUp, setStepUp] = useState(0); // 매년 납입 증액률(%)
+  const [ter,    setTer]    = useState(0); // 연 운용보수 TER(%)
+
   // 목표 역산
   const [targetSeed,  setTargetSeed]  = useState(0); // 기존 적립금(만원)
   const [targetMan,   setTargetMan]   = useState(10000);
@@ -158,23 +156,26 @@ export default function CalculatorPage() {
 
   // ── 적립식 계산 ──
   const seedWon   = seed * 10_000;
-  const fv        = useMemo(() => calcFV(seedWon, monthly * 10_000, rate, years), [seedWon, monthly, rate, years]);
-  const principal = seedWon + monthly * 10_000 * years * 12;
+  const sim       = useMemo(() => simulate(seedWon, monthly * 10_000, rate, years, stepUp, ter), [seedWon, monthly, rate, years, stepUp, ter]);
+  const fv        = sim.fv;
+  const principal = sim.principal;
   const profit    = fv - principal;
   const returnPct = principal > 0 ? (profit / principal) * 100 : 0;
-  const chartData = useMemo(() => genYearlyData(seedWon, monthly * 10_000, rate, years), [seedWon, monthly, rate, years]);
+  const chartData = sim.yearly;
 
   // ── 목표 역산 계산 ──
+  // FV는 월 납입액에 대해 선형 → (목표 - 시드성장분) / 단위납입factor 로 역산 (step-up·TER 포함)
   const targetSeedWon = targetSeed * 10_000;
-  const neededPMT    = useMemo(() => calcPMT(targetSeedWon, targetMan * 10_000, targetRate, targetYears), [targetSeedWon, targetMan, targetRate, targetYears]);
-  const neededPMTMan = Math.ceil(neededPMT / 10_000);
-  const totalPaid    = neededPMTMan * 10_000 * targetYears * 12;
-  const targetProfit = targetMan * 10_000 - totalPaid - targetSeedWon;
-  const seedSuffices = neededPMT === 0 && targetSeedWon > 0; // 기존 적립금만으로 목표 달성
-  const targetChart  = useMemo(
-    () => genYearlyData(targetSeedWon, neededPMTMan * 10_000, targetRate, targetYears),
-    [targetSeedWon, neededPMTMan, targetRate, targetYears]
-  );
+  const targetWon     = targetMan * 10_000;
+  const seedFVt       = useMemo(() => simulate(targetSeedWon, 0, targetRate, targetYears, 0, ter).fv, [targetSeedWon, targetRate, targetYears, ter]);
+  const pmtFactor     = useMemo(() => simulate(0, 1, targetRate, targetYears, stepUp, ter).fv, [targetRate, targetYears, stepUp, ter]);
+  const neededPMT     = pmtFactor > 0 ? Math.max(0, (targetWon - seedFVt) / pmtFactor) : 0;
+  const neededPMTMan  = Math.ceil(neededPMT / 10_000);
+  const targetSim     = useMemo(() => simulate(targetSeedWon, neededPMTMan * 10_000, targetRate, targetYears, stepUp, ter), [targetSeedWon, neededPMTMan, targetRate, targetYears, stepUp, ter]);
+  const totalPaid     = targetSim.principal - targetSeedWon; // 시드 제외 실제 납입액
+  const targetProfit  = targetSim.fv - targetSim.principal;
+  const seedSuffices  = neededPMT === 0 && targetSeedWon > 0; // 기존 적립금만으로 목표 달성
+  const targetChart   = targetSim.yearly;
 
   // ── 세액공제 계산 ──
   const tax = useMemo(
@@ -282,8 +283,15 @@ export default function CalculatorPage() {
                 <SliderInput label="연 수익률 (CAGR)"  value={targetRate}  onChange={setTargetRate}  min={0.5}  max={25}     step={0.5}  unit="%"    tickLeft="0.5%"      tickRight="25%" />
               </>
             )}
-            <div className="pt-1 border-t border-gray-100">
-              <SliderInput label="물가상승률 (실질가치 환산)" value={inflation} onChange={setInflation} min={0} max={6} step={0.1} unit="%" tickLeft="0%" tickRight="6%" />
+            <div className="pt-1 border-t border-gray-100 space-y-4">
+              <SliderInput label="매년 납입 증액 (급여 상승 반영)" value={stepUp}    onChange={setStepUp}    min={0} max={15} step={1}   unit="%" tickLeft="0%" tickRight="15%" />
+              <SliderInput label="운용보수 (연 TER)"            value={ter}       onChange={setTer}       min={0} max={2}  step={0.1} unit="%" tickLeft="0%" tickRight="2%" />
+              <SliderInput label="물가상승률 (실질가치 환산)"    value={inflation} onChange={setInflation} min={0} max={6}  step={0.1} unit="%" tickLeft="0%" tickRight="6%" />
+              {ter > 0 && (
+                <p className="text-[11px] text-gray-400 leading-relaxed">
+                  운용보수 차감 후 실질 수익률 <strong>연 {((isAccum ? rate : targetRate) - ter).toFixed(1)}%</strong> 기준으로 계산됩니다.
+                </p>
+              )}
             </div>
           </div>
 
@@ -291,8 +299,8 @@ export default function CalculatorPage() {
             <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 px-5 py-4 text-white">
               <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">
                 {isAccum
-                  ? `${years}년 후 예상 자산 — 월 ${monthly.toLocaleString()}만원 · 연 ${rate}%`
-                  : `필요 월 투자금 — 목표 ${fmt(targetMan * 10_000)} · ${targetYears}년 · 연 ${targetRate}%`}
+                  ? `${years}년 후 예상 자산 — 월 ${monthly.toLocaleString()}만원${stepUp > 0 ? ` (매년 +${stepUp}%)` : ""} · 연 ${rate}%`
+                  : `필요 ${stepUp > 0 ? "첫해 " : ""}월 투자금 — 목표 ${fmt(targetMan * 10_000)} · ${targetYears}년 · 연 ${targetRate}%`}
               </p>
               {isAccum ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
