@@ -332,30 +332,30 @@ export default function CalculatorPage() {
   return (
     <div className="max-w-5xl mx-auto space-y-3">
 
-      {/* ── 헤더 + 모드 토글 ── */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">복리 계산기</h1>
-          <p className="text-sm text-gray-400 mt-0.5">
-            {isTax     ? "IRP·DC 납입액으로 연말정산 세액공제 혜택을 계산하세요."
-            : isPension ? "적립금을 연금으로 수령할 때 월 수령액과 세금을 시뮬레이션하세요."
-            : isRoadmap ? "적립부터 수령까지, 평생 연금 흐름을 하나의 타임라인으로 확인하세요."
-            :             "월 투자금과 기간을 설정해 미래 자산을 시뮬레이션하세요."}
-          </p>
-        </div>
-        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 overflow-x-auto">
-          {TABS.map(([m, label]) => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              className={`flex-1 px-2 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
-                mode === m ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+      {/* ── 헤더 ── */}
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">복리 계산기</h1>
+        <p className="text-sm text-gray-400 mt-0.5">
+          {isTax     ? "IRP·DC 납입액으로 연말정산 세액공제 혜택을 계산하세요."
+          : isPension ? "적립금을 연금으로 수령할 때 월 수령액과 세금을 시뮬레이션하세요."
+          : isRoadmap ? "적립부터 수령까지, 평생 연금 흐름을 하나의 타임라인으로 확인하세요."
+          :             "월 투자금과 기간을 설정해 미래 자산을 시뮬레이션하세요."}
+        </p>
+      </div>
+
+      {/* ── 모드 토글 (타이틀 아래 배치) ── */}
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 overflow-x-auto w-full sm:w-fit">
+        {TABS.map(([m, label]) => (
+          <button
+            key={m}
+            onClick={() => setMode(m)}
+            className={`flex-1 sm:flex-initial px-2 sm:px-5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
+              mode === m ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* ── 적립식 / 목표 역산 ── */}
