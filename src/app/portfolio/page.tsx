@@ -38,8 +38,8 @@ interface PortfolioData {
   allocation: Allocation;
   baseAllocation: Allocation;
   signals: MarketSignal[];
-  // M2: cpi는 백엔드 H1 수정으로 null 가능
-  indicators: { vix: number; cpi: number | null; usCpi: number; cli: number; sp500Change: number };
+  // 백엔드 H1 수정으로 결측 지표는 null 반환됨 (모든 필드 null 가능)
+  indicators: { vix: number | null; cpi: number | null; usCpi: number | null; cli: number | null; sp500Change: number | null };
   etfGroups: EtfGroup[];
   updatedAt: string;
 }
@@ -67,6 +67,18 @@ function formatKRW(amount: number): string {
 
 function calcReturn(cagr: number, years: number) {
   return parseFloat(((Math.pow(1 + cagr / 100, years) - 1) * 100).toFixed(1));
+}
+
+// m3: 부호 포함 퍼센트 표기 (recalc로 음수 CAGR 유입 시 "+−5%" 방지)
+function signedPct(n: number): string {
+  return `${n >= 0 ? "+" : ""}${n}%`;
+}
+
+// s2: 만원 단위 입력 파싱 (비숫자/NaN/음수 방어)
+function parseManwon(input: string): number | null {
+  if (!input) return null;
+  const n = parseFloat(input);
+  return Number.isFinite(n) && n > 0 ? n * 10_000 : null;
 }
 
 // M2: 피셔 정확식으로 실질 CAGR 계산. cpi가 null이면 null 반환
@@ -197,10 +209,10 @@ export default function PortfolioPage() {
     ? parseFloat(((Math.pow(1 + realCagr / 100, selectedYears) - 1) * 100).toFixed(1))
     : null;
 
-  const totalInvestment = totalInvestmentInput ? parseFloat(totalInvestmentInput) * 10_000 : null;
+  const totalInvestment = parseManwon(totalInvestmentInput);
 
   // ── 리밸런싱 계산 ───────────────────────────────────────
-  const rebalTotal  = rebalTotalInput ? parseFloat(rebalTotalInput) * 10_000 : null;
+  const rebalTotal  = parseManwon(rebalTotalInput);
   const currentSum  = ASSET_KEYS.reduce((s, k) => s + currentAlloc[k], 0);
   const isValidSum  = Math.abs(currentSum - 100) < 0.1;
   const REBAL_ASSETS = ASSET_LABELS.map((label, i) => ({ key: ASSET_KEYS[i], label, color: COLORS[i] }));
@@ -452,12 +464,12 @@ export default function PortfolioPage() {
             <div className="grid grid-cols-2 gap-4 mb-3">
               <div>
                 <p className="text-[11px] text-slate-400 mb-0.5">누적 수익률 (명목)</p>
-                <p className="text-3xl font-bold text-emerald-400">+{portfolioReturn}%</p>
+                <p className={`text-3xl font-bold ${portfolioReturn >= 0 ? "text-emerald-400" : "text-red-400"}`}>{signedPct(portfolioReturn)}</p>
               </div>
               <div>
                 <p className="text-[11px] text-slate-400 mb-0.5">연평균 수익률 (CAGR)</p>
-                <p className="text-3xl font-bold text-emerald-400">
-                  +{portfolioCagr}%<span className="text-base font-normal text-slate-400">/년</span>
+                <p className={`text-3xl font-bold ${portfolioCagr >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  {signedPct(portfolioCagr)}<span className="text-base font-normal text-slate-400">/년</span>
                 </p>
               </div>
             </div>
@@ -515,8 +527,8 @@ export default function PortfolioPage() {
             <div className="flex items-center justify-between border-t border-slate-700 pt-3 mt-1">
               <p className="text-[11px] text-slate-500">
                 {krCpi !== null
-                  ? `명목 CAGR +${portfolioCagr}% − 한국 CPI ${krCpi}% = 실질 ${realCagr !== null && realCagr >= 0 ? "+" : ""}${realCagr ?? "N/A"}%`
-                  : `명목 CAGR +${portfolioCagr}% · 물가 데이터 없음`}
+                  ? `명목 CAGR ${signedPct(portfolioCagr)} − 한국 CPI ${krCpi}% = 실질 ${realCagr !== null && realCagr >= 0 ? "+" : ""}${realCagr ?? "N/A"}%`
+                  : `명목 CAGR ${signedPct(portfolioCagr)} · 물가 데이터 없음`}
                 {totalInvestment ? ` · 투자원금 ${(totalInvestment / 10_000).toLocaleString("ko-KR")}만원` : ""}
               </p>
               <span className="text-[10px] text-slate-600 bg-slate-700/60 px-2 py-0.5 rounded-full">추정치</span>
@@ -544,14 +556,14 @@ export default function PortfolioPage() {
                       )}
                     </div>
                     <p className="text-[11px] text-gray-400 mt-0.5">
-                      CAGR +{row.cagr}% · 비중 {row.portfolioPct}%
+                      CAGR {signedPct(row.cagr)} · 비중 {row.portfolioPct}%
                       {realEtfCagr !== null && (
                         <span className="ml-2 text-violet-400">· 실질 CAGR {realEtfCagr >= 0 ? "+" : ""}{realEtfCagr}%</span>
                       )}
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <span className="text-sm font-bold px-3 py-1 rounded-full" style={{ color: retColor, background: retBg }}>+{ret}%</span>
+                    <span className="text-sm font-bold px-3 py-1 rounded-full" style={{ color: retColor, background: retBg }}>{signedPct(ret)}</span>
                     {realEtfRet !== null ? (
                       <p className={`text-[10px] mt-0.5 ${realEtfRet >= 0 ? "text-violet-500" : "text-red-400"}`}>
                         실질 {realEtfRet >= 0 ? "+" : ""}{realEtfRet}%
