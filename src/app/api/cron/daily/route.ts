@@ -1,24 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { collectAllStocks } from "@/lib/stock-collector";
-import { refreshStockUniverse } from "@/lib/universe";
 import { collectRealtimeData } from "@/lib/collector";
+import { getBaseUrl, isAuthorizedCron, triggerNextSlice } from "@/lib/cron-self";
 
-// Vercel Cron 인증 헤더 검증
-function isAuthorized(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-  return auth === `Bearer ${process.env.CRON_SECRET}`;
-}
+export const dynamic = "force-dynamic";
+// 가벼운 오케스트레이터(지표+리포트+슬라이스 트리거)만 수행하므로 짧게 끝난다.
+export const maxDuration = 60;
 
+/**
+ * 야간 일일 cron 오케스트레이터.
+ *
+ * 변경 배경(2026-06): 기존에는 이 핸들러가 전체 유니버스(200종목) 주가 루프와
+ * 전 종목 DART 재무 루프를 한 번의 함수 실행에서 순차로 돌려 60초 타임아웃(504)에
+ * 걸려 중단됐다(2026-06-22 이후 주가 수집 누락). 무거운 루프는 슬라이스 단위
+ * self-chaining 엔드포인트로 분리하고, 이 핸들러는 가벼운 작업만 직접 수행한 뒤
+ * 슬라이스 0 을 fire-and-forget 으로 트리거한다.
+ *
+ *  - 주가:   /api/cron/collect-stocks     (40종목/슬라이스, 5슬라이스로 200 커버)
+ *  - 재무:   /api/cron/collect-financials (40종목/슬라이스)
+ *  - 지표:   여기서 직접 (경량, ~10심볼)
+ *  - 리포트: 여기서 직접 (LLM 1회, try/catch 격리)
+ */
 export async function GET(req: NextRequest) {
-  if (!isAuthorized(req)) {
+  if (!isAuthorizedCron(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const results: Record<string, unknown> = {};
+  const baseUrl = getBaseUrl(req);
 
+  // 1. 경제지표 수집 (Yahoo 실시간, 경량)
   try {
-    // 1. 경제지표 수집 (Yahoo Finance 실시간)
     const indicatorResult = await collectRealtimeData();
     results.indicators = { updated: indicatorResult.updated.length, failed: indicatorResult.failed.length };
     console.log(`[cron] 경제지표 업데이트: ${indicatorResult.updated.length}개`);
@@ -27,42 +39,30 @@ export async function GET(req: NextRequest) {
     console.error("[cron] 경제지표 수집 오류:", err);
   }
 
+  // 2. 주가 스냅샷 수집 — 슬라이스 0 트리거 (유니버스 갱신은 슬라이스 0 내부에서 수행)
   try {
-    // 2-0. 시총 유니버스 자동 갱신 (순위 변동 반영)
-    const universe = await refreshStockUniverse(200);
-    results.universe = universe;
-    console.log(`[cron] 유니버스 갱신: top ${universe.total} (신규 ${universe.created})`);
-
-    // 2. 주가 스냅샷 수집 (유니버스 전체, 30개씩 배치, 없으면 전체 폴백)
-    const rankedCount = await prisma.stock.count({ where: { rank: { not: null } } });
-    const totalStocks = rankedCount > 0 ? rankedCount : await prisma.stock.count();
-    let totalUpdated = 0;
-    for (let offset = 0; offset < totalStocks; offset += 30) {
-      const stockResult = await collectAllStocks(undefined, { offset, limit: 30 });
-      totalUpdated += stockResult.updated;
-    }
-    results.stocks = { updated: totalUpdated };
-    console.log(`[cron] 주가 수집: ${totalUpdated}개 업데이트`);
+    await triggerNextSlice(baseUrl, "/api/cron/collect-stocks", { offset: 0 });
+    results.stocks = { triggered: true };
+    console.log("[cron] 주가 슬라이스 수집 트리거 (offset 0)");
   } catch (err) {
     results.stocksError = String(err);
-    console.error("[cron] 주가 수집 오류:", err);
+    console.error("[cron] 주가 수집 트리거 오류:", err);
   }
 
-  try {
-    // 3. DART 재무 수집 (API 키 있을 때만)
-    if (process.env.DART_API_KEY) {
-      const { collectAllFinancials } = await import("@/lib/dart-collector");
-      const financialResult = await collectAllFinancials();
-      results.financials = { updated: financialResult.updated, failed: financialResult.failed.length };
-      console.log(`[cron] 재무 수집: ${financialResult.updated}개 업데이트`);
+  // 3. DART 재무 수집 — 슬라이스 0 트리거 (API 키 있을 때만)
+  if (process.env.DART_API_KEY) {
+    try {
+      await triggerNextSlice(baseUrl, "/api/cron/collect-financials", { offset: 0 });
+      results.financials = { triggered: true };
+      console.log("[cron] 재무 슬라이스 수집 트리거 (offset 0)");
+    } catch (err) {
+      results.financialsError = String(err);
+      console.error("[cron] 재무 수집 트리거 오류:", err);
     }
-  } catch (err) {
-    results.financialsError = String(err);
-    console.error("[cron] 재무 수집 오류:", err);
   }
 
+  // 4. 시황 리포트 자동 생성 (LLM 1회, 격리)
   try {
-    // 4. 시황 리포트 자동 생성
     const { generateReport } = await import("@/lib/report-generator");
     const report = await generateReport(new Date(), { force: false });
     results.report = { status: report.status, date: report.date };
@@ -72,12 +72,8 @@ export async function GET(req: NextRequest) {
     console.error("[cron] 시황 리포트 오류:", err);
   }
 
-  // 마지막 실행 시각 기록
+  // 연결 살아있는지 가벼운 확인
   await prisma.$executeRaw`SELECT 1`.catch(() => {});
 
-  return NextResponse.json({
-    ok: true,
-    runAt: new Date().toISOString(),
-    results,
-  });
+  return NextResponse.json({ ok: true, runAt: new Date().toISOString(), results });
 }
