@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { useSession, signOut } from "next-auth/react";
 
 const PRIMARY_TABS = [
   { href: "/",          icon: "📊", label: "대시보드" },
@@ -25,6 +26,7 @@ const MORE_ITEMS = [
 export default function MobileNav() {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
+  const { data: session, status } = useSession();
 
   const isMoreActive = MORE_ITEMS.some(({ href }) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href)
@@ -62,6 +64,36 @@ export default function MobileNav() {
                   </Link>
                 );
               })}
+            </div>
+
+            {/* 사용자 영역 — 로그아웃/로그인 (모바일에선 사이드바가 숨겨지므로 여기서 제공) */}
+            <div className="px-3 pb-3 pt-1 border-t border-slate-700/50">
+              {status === "loading" ? (
+                <div className="h-10 bg-slate-800 rounded-xl animate-pulse" />
+              ) : session?.user ? (
+                <div className="flex items-center gap-3 px-2">
+                  <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                    {(session.user.name ?? session.user.email ?? "U")[0].toUpperCase()}
+                  </div>
+                  <span className="text-sm text-slate-300 truncate flex-1">
+                    {session.user.name ?? session.user.email}
+                  </span>
+                  <button
+                    onClick={() => { setMoreOpen(false); signOut({ callbackUrl: "/" }); }}
+                    className="text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-lg px-3 py-2 transition-colors flex-shrink-0"
+                  >
+                    로그아웃
+                  </button>
+                </div>
+              ) : (
+                <Link
+                  href="/login"
+                  onClick={() => setMoreOpen(false)}
+                  className="flex items-center justify-center w-full py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium transition-colors"
+                >
+                  로그인
+                </Link>
+              )}
             </div>
           </div>
           <div className="flex-1 bg-black/40" />
