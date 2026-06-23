@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(dir /s \"C:\\\\work\\\\investing-manager\")",
-      "PowerShell(Get-ChildItem -Path \"C:\\\\work\\\\investing-manager\" -Force -File | ForEach-Object { $_.FullName })"
-    ]
-  }
-}

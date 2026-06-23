@@ -48,3 +48,9 @@ next-env.d.ts
 
 # verification screenshots
 /scripts/_calc-shots/
+/verify-screenshots/
+
+# claude code / local dev tooling
+/.claude/
+claude-dev.ps1
+**/settings.local.json
