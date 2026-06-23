@@ -8,6 +8,29 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// 투자전략 플래너: ETF 누적수익률 (H5/L — 코드 상수 E → DB 이전)
+// - key: 코드 상수 E의 식별자(예: "KOSPI200","SP500","NASDAQ100","국채3년" 등). ETF_DEFS에서 참조.
+// - cumulativeReturn/returnYears/returnPeriod: 기존 상수값과 1:1 동일. 누적 비교 금지, CAGR로만 상호비교.
+// - source/asOf: 값의 출처와 기준일(검증/표시용).
+// - updateMethod: INDEX_CAGR(지수 수집으로 자동 갱신 가능) | MANUAL(지수 미수집·수동 시드 관리).
+// - indexType: INDEX_CAGR일 때 CAGR 산출에 쓰는 IndicatorRecord.type(예: "KOSPI","SP500","NASDAQ100"). MANUAL이면 null.
+model EtfReturn {
+  id               String   @id @default(cuid())
+  key              String   @unique  // 상수 E 식별자 (ETF_DEFS 매핑 키)
+  ticker           String              // 대표 ETF 티커 (표시용)
+  name             String              // 대표 ETF 명 (표시용)
+  cumulativeReturn Float               // 누적 수익률 (%)
+  returnYears      Float               // 측정 기간 (년) — CAGR 산출 분모
+  returnPeriod     String              // 노출용 기간 표기 (예: "10년", "6년 (설정이후)")
+  source           String              // 값 출처 설명
+  asOf             DateTime            // 기준일
+  updateMethod     String   @default("MANUAL") // INDEX_CAGR | MANUAL
+  indexType        String?             // INDEX_CAGR 시 참조할 IndicatorRecord.type
+  updatedAt        DateTime @updatedAt
+
+  @@index([updateMethod])
+}
+
 // Phase 1: 경제지표 시계열 데이터
 model IndicatorRecord {
   id         String   @id @default(cuid())
