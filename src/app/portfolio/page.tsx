@@ -157,8 +157,28 @@ export default function PortfolioPage() {
   }, []);
 
   if (loading) return (
-    <div className="flex items-center justify-center min-h-[60vh]">
-      <p className="text-gray-400">포트폴리오를 분석하는 중...</p>
+    <div
+      className="flex items-center justify-center min-h-[60vh]"
+      role="status"
+      aria-live="polite"
+      aria-label="포트폴리오 로딩 중"
+    >
+      <div className="flex flex-col items-center gap-5 text-center px-6">
+        {/* 스피너 */}
+        <div
+          className="w-14 h-14 rounded-full border-4 border-blue-100 border-t-blue-500 animate-spin"
+          aria-hidden="true"
+        />
+        <div>
+          <p className="text-base font-semibold text-gray-700">포트폴리오 분석 중…</p>
+          <p className="text-sm text-gray-400 mt-1">경제지표를 반영한 맞춤 배분을 불러오고 있습니다.</p>
+        </div>
+        <div className="flex gap-1.5" aria-hidden="true">
+          <span className="w-2 h-2 rounded-full bg-blue-400 animate-bounce [animation-delay:0ms]" />
+          <span className="w-2 h-2 rounded-full bg-blue-400 animate-bounce [animation-delay:150ms]" />
+          <span className="w-2 h-2 rounded-full bg-blue-400 animate-bounce [animation-delay:300ms]" />
+        </div>
+      </div>
     </div>
   );
 
