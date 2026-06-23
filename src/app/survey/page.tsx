@@ -37,6 +37,37 @@ export default function SurveyPage() {
     router.push("/portfolio");
   }
 
+  // ── 제출 중: 전체 화면 로딩 오버레이 ──────────────────────────────────
+  if (submitting) {
+    return (
+      <div
+        className="min-h-[70vh] flex items-center justify-center"
+        role="status"
+        aria-live="polite"
+        aria-label="포트폴리오 분석 중"
+      >
+        <div className="flex flex-col items-center gap-5 text-center px-6">
+          {/* 스피너 */}
+          <div
+            className="w-14 h-14 rounded-full border-4 border-blue-100 border-t-blue-500 animate-spin"
+            aria-hidden="true"
+          />
+          {/* 안내 문구 */}
+          <div>
+            <p className="text-base font-semibold text-gray-800">포트폴리오 분석 중…</p>
+            <p className="text-sm text-gray-400 mt-1">맞춤 자산 배분을 계산하고 있습니다.</p>
+          </div>
+          {/* 진행 상태를 시각적으로 암시하는 점 애니메이션 */}
+          <div className="flex gap-1.5" aria-hidden="true">
+            <span className="w-2 h-2 rounded-full bg-blue-400 animate-bounce [animation-delay:0ms]" />
+            <span className="w-2 h-2 rounded-full bg-blue-400 animate-bounce [animation-delay:150ms]" />
+            <span className="w-2 h-2 rounded-full bg-blue-400 animate-bounce [animation-delay:300ms]" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-[70vh] flex items-center justify-center">
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm w-full max-w-xl p-8">
@@ -99,7 +130,7 @@ export default function SurveyPage() {
               className="bg-blue-500 text-white px-6 py-2 rounded-full text-sm font-medium
                 hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {submitting ? "분석 중..." : "결과 보기 →"}
+              결과 보기 →
             </button>
           ) : (
             <button
