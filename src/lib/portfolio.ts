@@ -44,33 +44,41 @@ export interface MarketSignal {
   allocationAdjust?: Partial<Allocation>; // 비율 조정 (합산 후 정규화)
 }
 
-interface IndicatorValues {
-  vix: number;
-  cpi: number;
-  usCpi: number;
-  cli: number;
-  sp500Change: number; // 전일 대비 변화율 %
+// 지표 값은 결측 가능(null). null인 지표는 신호 평가에서 스킵하여
+// "0 fallback → 신호 오발동"(예: CLI=0 → 경기수축 무조건 발동)을 방지한다.
+export interface IndicatorValues {
+  vix: number | null;
+  cpi: number | null;
+  usCpi: number | null;
+  cli: number | null;
+  // 직전 거래일 대비 변화율 %. route.ts에서 두 SP500 레코드의 recordedAt 간격이
+  // 1거래일 범위(주말·공휴일 감안 4일)를 초과하면 null로 처리되어 여기 도달하지 않는다.
+  // 즉 여기서는 항상 "정상 1거래일 변화"로 간주하고 SP500_DROP을 평가한다.
+  sp500Change: number | null;
 }
 
 export function getMarketSignals(indicators: IndicatorValues): MarketSignal[] {
   const signals: MarketSignal[] = [];
 
-  if (indicators.vix >= 30) {
-    signals.push({
-      key: "VIX_HIGH",
-      message: `VIX ${indicators.vix.toFixed(1)} — 시장 공포 수준. 안전자산 비중 확대를 검토하세요.`,
-      severity: "danger",
-      allocationAdjust: { guaranteed: +10, equity: -10 },
-    });
-  } else if (indicators.vix >= 20) {
-    signals.push({
-      key: "VIX_ELEVATED",
-      message: `VIX ${indicators.vix.toFixed(1)} — 변동성 주의 구간. 포트폴리오 점검이 필요합니다.`,
-      severity: "warning",
-    });
+  // 결측 지표(null)는 해당 분기를 평가하지 않고 스킵한다.
+  if (indicators.vix !== null) {
+    if (indicators.vix >= 30) {
+      signals.push({
+        key: "VIX_HIGH",
+        message: `VIX ${indicators.vix.toFixed(1)} — 시장 공포 수준. 안전자산 비중 확대를 검토하세요.`,
+        severity: "danger",
+        allocationAdjust: { guaranteed: +10, equity: -10 },
+      });
+    } else if (indicators.vix >= 20) {
+      signals.push({
+        key: "VIX_ELEVATED",
+        message: `VIX ${indicators.vix.toFixed(1)} — 변동성 주의 구간. 포트폴리오 점검이 필요합니다.`,
+        severity: "warning",
+      });
+    }
   }
 
-  if (indicators.cpi >= 3) {
+  if (indicators.cpi !== null && indicators.cpi >= 3) {
     signals.push({
       key: "CPI_HIGH",
       message: `한국 CPI ${indicators.cpi.toFixed(1)}% — 인플레이션 주의. 채권 비중 축소를 고려하세요.`,
@@ -79,7 +87,7 @@ export function getMarketSignals(indicators: IndicatorValues): MarketSignal[] {
     });
   }
 
-  if (indicators.usCpi >= 3) {
+  if (indicators.usCpi !== null && indicators.usCpi >= 3) {
     signals.push({
       key: "US_CPI_HIGH",
       message: `미국 CPI ${indicators.usCpi.toFixed(1)}% — 연준 긴축 압력. 달러 강세·원화 약세 주의.`,
@@ -87,22 +95,24 @@ export function getMarketSignals(indicators: IndicatorValues): MarketSignal[] {
     });
   }
 
-  if (indicators.cli > 101) {
-    signals.push({
-      key: "CLI_EXPANSION",
-      message: `경기선행지수 ${indicators.cli.toFixed(1)} — 경기 확장 신호. 주식 비중 소폭 확대 고려.`,
-      severity: "info",
-      allocationAdjust: { equity: +5, guaranteed: -5 },
-    });
-  } else if (indicators.cli < 99) {
-    signals.push({
-      key: "CLI_CONTRACTION",
-      message: `경기선행지수 ${indicators.cli.toFixed(1)} — 경기 수축 신호. 방어적 자산 비중 유지.`,
-      severity: "warning",
-    });
+  if (indicators.cli !== null) {
+    if (indicators.cli > 101) {
+      signals.push({
+        key: "CLI_EXPANSION",
+        message: `경기선행지수 ${indicators.cli.toFixed(1)} — 경기 확장 신호. 주식 비중 소폭 확대 고려.`,
+        severity: "info",
+        allocationAdjust: { equity: +5, guaranteed: -5 },
+      });
+    } else if (indicators.cli < 99) {
+      signals.push({
+        key: "CLI_CONTRACTION",
+        message: `경기선행지수 ${indicators.cli.toFixed(1)} — 경기 수축 신호. 방어적 자산 비중 유지.`,
+        severity: "warning",
+      });
+    }
   }
 
-  if (indicators.sp500Change <= -3) {
+  if (indicators.sp500Change !== null && indicators.sp500Change <= -3) {
     signals.push({
       key: "SP500_DROP",
       message: `S&P500 ${indicators.sp500Change.toFixed(1)}% 하락. 글로벌 증시 하락 압력 주의.`,
@@ -127,13 +137,27 @@ export function applySignals(riskType: RiskType, signals: MarketSignal[]): Alloc
   }
 
   // 합계 100% 정규화
+  // - total===0 가드: 0으로 나눠 NaN이 되는 것을 방지(이론상 BASE_ALLOCATION 합이 0일 수 없으나 방어).
+  // - 4개 자산군 모두 factor로 스케일 후 round → 잔차를 equity에만 몰지 않는다(음수/편향 방지).
+  // - 반올림 오차(diff = 100 - 합)는 "현재 비중이 가장 큰 자산군"에 흡수시켜 결과가 항상 ≥0, 합=100을 만족.
   const total = alloc.guaranteed + alloc.bond + alloc.mixed + alloc.equity;
+  if (total === 0) {
+    return { ...BASE_ALLOCATION[riskType] };
+  }
   if (total !== 100) {
     const factor = 100 / total;
     alloc.guaranteed = Math.round(alloc.guaranteed * factor);
     alloc.bond       = Math.round(alloc.bond * factor);
     alloc.mixed      = Math.round(alloc.mixed * factor);
-    alloc.equity     = 100 - alloc.guaranteed - alloc.bond - alloc.mixed;
+    alloc.equity     = Math.round(alloc.equity * factor);
+
+    // 반올림 누적 오차를 가장 비중이 큰 자산군에 흡수 (모두 ≥0 유지)
+    const diff = 100 - (alloc.guaranteed + alloc.bond + alloc.mixed + alloc.equity);
+    if (diff !== 0) {
+      const keys: (keyof Allocation)[] = ["guaranteed", "bond", "mixed", "equity"];
+      const largest = keys.reduce((a, b) => (alloc[a] >= alloc[b] ? a : b));
+      alloc[largest] = Math.max(0, alloc[largest] + diff);
+    }
   }
 
   return alloc;
@@ -155,18 +179,38 @@ interface RawEtf {
   ticker: string;
   description: string;
   weightInClass: number; // 자산군 내 비중 (합계 100)
-  /** 누적 수익률 (%) */
+  /** EtfReturnMap 조회 키 (상수 E 식별자). 수익률 값은 빌드 시 맵에서 해석. */
+  returnKey: string;
+}
+
+// ETF 누적 수익률 — H5/L에서 DB(EtfReturn 모델)로 이전 완료.
+//   - 정본(source of truth): EtfReturn 테이블. 조회는 getEtfReturnMap()(@/lib/etf-returns) 사용.
+//   - 조립은 buildEtfRecommendations(riskType, allocation, returnMap)가 returnMap을 받아 수행.
+//   - API(route.ts)가 DB 조회 → 조립 → 응답에 etfGroups 포함. (page.tsx 후속 연동 권장)
+//
+// 아래 FALLBACK_ETF_RETURNS는 DB 조회 실패/누락 키 대비 안전망이며, 값은 시드(prisma/seed-etf.ts)와
+// 동일하다. getEtfRecommendations() 동기 래퍼가 이 fallback을 사용한다(프론트 하위호환 유지).
+//
+// ⚠️ 표시 주의:
+//   - 수치는 "과거 실적"이며 미래 수익을 보장하지 않는다.
+//   - 항목별 returnYears(측정 기간)가 서로 다르다(설정이후 6~10년 혼재).
+//     → cumulativeReturn(누적)끼리 단순 비교 금지. 연환산(CAGR)으로만 상호 비교할 것.
+//   - returnPeriod 문자열은 프론트 노출용 기간 표기이며 returnYears와 일치해야 한다.
+//
+// CAGR = (1 + cumulativeReturn/100)^(1/returnYears) - 1   ← buildEtfRecommendations에서 산출
+
+/** ETF 수익률 값 (DB EtfReturn에서 추출한 계산용 3필드) */
+export interface EtfReturnValue {
   cumulativeReturn: number;
-  /** 측정 기간 (년 수) — CAGR 계산에 사용 */
   returnYears: number;
-  /** 수익률 기간 표기 (예: "10년", "6년 설정이후") */
   returnPeriod: string;
 }
 
-// ETF 누적 수익률 (기준: 2026-06, 지수 기반 추정치)
-// 출처: KOSPI·S&P500·NASDAQ 100 실제 지수 성과 + KRW/USD 변동 반영
-// CAGR = (1 + return/100)^(1/years) - 1
-const E = {
+/** 상수 E 식별자(key) → 수익률 값 맵. getEtfReturnMap()가 DB에서 이 형태로 반환한다. */
+export type EtfReturnMap = Record<string, EtfReturnValue>;
+
+// DB 조회 실패/누락 대비 fallback (시드 prisma/seed-etf.ts와 값 동일, 기준일 2026-06)
+const FALLBACK_ETF_RETURNS: EtfReturnMap = {
   국채3년:        { cumulativeReturn: 31,  returnYears: 10, returnPeriod: "10년" },
   미국30년국채H:  { cumulativeReturn: 22,  returnYears: 8,  returnPeriod: "8년 (설정이후)" },
   TDF2030:        { cumulativeReturn: 88,  returnYears: 9,  returnPeriod: "9년 (설정이후)" },
@@ -182,44 +226,44 @@ const ETF_DEFS: Partial<Record<keyof Allocation, {
 }>> = {
   bond: {
     items: [
-      { name: "TIGER 국채3년",       ticker: "114260", description: "국내 3년 국고채 추종, 안정적 금리 수익",    weightInClass: 60, ...E.국채3년 },
-      { name: "ACE 미국30년국채(H)", ticker: "304660", description: "미국 장기채, 환헤지로 환율 위험 최소화",   weightInClass: 40, ...E.미국30년국채H },
+      { name: "TIGER 국채3년",       ticker: "114260", description: "국내 3년 국고채 추종, 안정적 금리 수익",    weightInClass: 60, returnKey: "국채3년" },
+      { name: "ACE 미국30년국채(H)", ticker: "304660", description: "미국 장기채, 환헤지로 환율 위험 최소화",   weightInClass: 40, returnKey: "미국30년국채H" },
     ],
   },
   mixed: {
     items: [
-      { name: "TIGER TDF2030",         ticker: "394280", description: "생애주기형 자산 자동 배분 펀드",         weightInClass: 60, ...E.TDF2030 },
-      { name: "KODEX 200미국채혼합",   ticker: "272580", description: "주식 30% + 채권 70% 균형 포트폴리오",   weightInClass: 40, ...E.혼합국채 },
+      { name: "TIGER TDF2030",         ticker: "394280", description: "생애주기형 자산 자동 배분 펀드",         weightInClass: 60, returnKey: "TDF2030" },
+      { name: "KODEX 200미국채혼합",   ticker: "272580", description: "주식 30% + 채권 70% 균형 포트폴리오",   weightInClass: 40, returnKey: "혼합국채" },
     ],
   },
   equity: {
     items: [
-      { name: "TIGER 미국S&P500", ticker: "360750", description: "미국 S&P500 우량 대형주", weightInClass: 50, ...E.SP500 },
-      { name: "KODEX 200",        ticker: "069500", description: "KOSPI200 국내 대형주",    weightInClass: 50, ...E.KOSPI200 },
+      { name: "TIGER 미국S&P500", ticker: "360750", description: "미국 S&P500 우량 대형주", weightInClass: 50, returnKey: "SP500" },
+      { name: "KODEX 200",        ticker: "069500", description: "KOSPI200 국내 대형주",    weightInClass: 50, returnKey: "KOSPI200" },
     ],
     byRisk: {
       CONSERVATIVE: [
-        { name: "KODEX 200",         ticker: "069500", description: "KOSPI200 국내 대형주 대표 지수",  weightInClass: 60, ...E.KOSPI200 },
-        { name: "TIGER 미국S&P500",  ticker: "360750", description: "미국 S&P500 우량 대형주",        weightInClass: 40, ...E.SP500 },
+        { name: "KODEX 200",         ticker: "069500", description: "KOSPI200 국내 대형주 대표 지수",  weightInClass: 60, returnKey: "KOSPI200" },
+        { name: "TIGER 미국S&P500",  ticker: "360750", description: "미국 S&P500 우량 대형주",        weightInClass: 40, returnKey: "SP500" },
       ],
       MODERATE_CONSERVATIVE: [
-        { name: "KODEX 200",         ticker: "069500", description: "KOSPI200 국내 대형주 대표 지수",  weightInClass: 50, ...E.KOSPI200 },
-        { name: "TIGER 미국S&P500",  ticker: "360750", description: "미국 S&P500 우량 대형주",        weightInClass: 50, ...E.SP500 },
+        { name: "KODEX 200",         ticker: "069500", description: "KOSPI200 국내 대형주 대표 지수",  weightInClass: 50, returnKey: "KOSPI200" },
+        { name: "TIGER 미국S&P500",  ticker: "360750", description: "미국 S&P500 우량 대형주",        weightInClass: 50, returnKey: "SP500" },
       ],
       MODERATE: [
-        { name: "TIGER 미국S&P500",  ticker: "360750", description: "미국 S&P500 우량 대형주",        weightInClass: 45, ...E.SP500 },
-        { name: "KODEX 200",         ticker: "069500", description: "KOSPI200 국내 대형주 대표 지수",  weightInClass: 35, ...E.KOSPI200 },
-        { name: "TIGER 나스닥100",   ticker: "133690", description: "미국 나스닥100 성장·기술주",      weightInClass: 20, ...E.NASDAQ100 },
+        { name: "TIGER 미국S&P500",  ticker: "360750", description: "미국 S&P500 우량 대형주",        weightInClass: 45, returnKey: "SP500" },
+        { name: "KODEX 200",         ticker: "069500", description: "KOSPI200 국내 대형주 대표 지수",  weightInClass: 35, returnKey: "KOSPI200" },
+        { name: "TIGER 나스닥100",   ticker: "133690", description: "미국 나스닥100 성장·기술주",      weightInClass: 20, returnKey: "NASDAQ100" },
       ],
       AGGRESSIVE: [
-        { name: "TIGER 미국S&P500",  ticker: "360750", description: "미국 S&P500 우량 대형주",        weightInClass: 40, ...E.SP500 },
-        { name: "TIGER 나스닥100",   ticker: "133690", description: "미국 나스닥100 성장·기술주",      weightInClass: 35, ...E.NASDAQ100 },
-        { name: "KODEX 200",         ticker: "069500", description: "KOSPI200 국내 대형주 대표 지수",  weightInClass: 25, ...E.KOSPI200 },
+        { name: "TIGER 미국S&P500",  ticker: "360750", description: "미국 S&P500 우량 대형주",        weightInClass: 40, returnKey: "SP500" },
+        { name: "TIGER 나스닥100",   ticker: "133690", description: "미국 나스닥100 성장·기술주",      weightInClass: 35, returnKey: "NASDAQ100" },
+        { name: "KODEX 200",         ticker: "069500", description: "KOSPI200 국내 대형주 대표 지수",  weightInClass: 25, returnKey: "KOSPI200" },
       ],
       VERY_AGGRESSIVE: [
-        { name: "TIGER 나스닥100",   ticker: "133690", description: "미국 나스닥100 성장·기술주",      weightInClass: 50, ...E.NASDAQ100 },
-        { name: "TIGER 미국S&P500",  ticker: "360750", description: "미국 S&P500 우량 대형주",        weightInClass: 35, ...E.SP500 },
-        { name: "KODEX 200",         ticker: "069500", description: "KOSPI200 국내 대형주 대표 지수",  weightInClass: 15, ...E.KOSPI200 },
+        { name: "TIGER 나스닥100",   ticker: "133690", description: "미국 나스닥100 성장·기술주",      weightInClass: 50, returnKey: "NASDAQ100" },
+        { name: "TIGER 미국S&P500",  ticker: "360750", description: "미국 S&P500 우량 대형주",        weightInClass: 35, returnKey: "SP500" },
+        { name: "KODEX 200",         ticker: "069500", description: "KOSPI200 국내 대형주 대표 지수",  weightInClass: 15, returnKey: "KOSPI200" },
       ],
     },
   },
@@ -253,7 +297,20 @@ const ASSET_CLASS_META: Array<{ key: keyof Allocation; label: string; color: str
   { key: "equity",     label: "주식형",    color: "#ef4444" },
 ];
 
-export function getEtfRecommendations(riskType: RiskType, allocation: Allocation): EtfGroup[] {
+/**
+ * ETF 추천 조립 (순수 함수). 수익률 값은 returnMap(DB에서 조회한 EtfReturnMap)에서 해석한다.
+ * 누락 키는 FALLBACK_ETF_RETURNS로 보강한다(표시 깨짐 방지).
+ *
+ * API(route.ts)에서 getEtfReturnMap()으로 맵을 조회해 이 함수에 주입하고 응답에 포함하는 것이 권장 경로.
+ */
+export function buildEtfRecommendations(
+  riskType: RiskType,
+  allocation: Allocation,
+  returnMap: EtfReturnMap
+): EtfGroup[] {
+  const resolve = (key: string): EtfReturnValue =>
+    returnMap[key] ?? FALLBACK_ETF_RETURNS[key] ?? { cumulativeReturn: 0, returnYears: 1, returnPeriod: "-" };
+
   return ASSET_CLASS_META
     .filter(({ key }) => allocation[key] > 0)
     .map(({ key, label, color }) => {
@@ -273,14 +330,32 @@ export function getEtfRecommendations(riskType: RiskType, allocation: Allocation
           ? allocationPct - usedPct
           : Math.round((allocationPct * item.weightInClass) / 100);
         usedPct += portfolioPct;
+
+        const ret = resolve(item.returnKey);
+        // 연평균 수익률(CAGR): 항목별 returnYears 기준으로 누적 수익률을 연환산.
+        // returnPeriod(노출용 표기)와 returnYears(계산 기준)는 동일 기간을 가리킨다.
         const cagr = parseFloat(
-          ((Math.pow(1 + item.cumulativeReturn / 100, 1 / item.returnYears) - 1) * 100).toFixed(1)
+          ((Math.pow(1 + ret.cumulativeReturn / 100, 1 / ret.returnYears) - 1) * 100).toFixed(1)
         );
-        return { name: item.name, ticker: item.ticker, description: item.description, portfolioPct, classPct: item.weightInClass, cumulativeReturn: item.cumulativeReturn, returnYears: item.returnYears, returnPeriod: item.returnPeriod, cagr };
+        return {
+          name: item.name, ticker: item.ticker, description: item.description,
+          portfolioPct, classPct: item.weightInClass,
+          cumulativeReturn: ret.cumulativeReturn, returnYears: ret.returnYears, returnPeriod: ret.returnPeriod,
+          cagr,
+        };
       });
 
       return { assetClass: key, label, color, allocationPct, isGuaranteed: false, etfs };
     });
+}
+
+/**
+ * 동기 하위호환 래퍼. DB 조회 없이 FALLBACK_ETF_RETURNS로 조립한다.
+ * page.tsx(클라이언트)가 이 함수를 직접 호출 중이라 유지한다.
+ * 권장: API 응답의 etfGroups를 소비하도록 프론트 전환(후속 작업).
+ */
+export function getEtfRecommendations(riskType: RiskType, allocation: Allocation): EtfGroup[] {
+  return buildEtfRecommendations(riskType, allocation, FALLBACK_ETF_RETURNS);
 }
 
 // 설문 문항

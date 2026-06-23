@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "db:seed:etf": "tsx prisma/seed-etf.ts",
+    "etf:recalc": "node scripts/recalc-etf-returns.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

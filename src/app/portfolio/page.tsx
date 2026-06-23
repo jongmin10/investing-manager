@@ -1,12 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
-import {
-  PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid,
-} from "recharts";
-import { Allocation, MarketSignal, RiskType, getEtfRecommendations } from "@/lib/portfolio";
+import { Allocation, EtfGroup, MarketSignal, RiskType } from "@/lib/portfolio";
+
+// ── M4: Recharts 컴포넌트 lazy-load (번들 최적화) ─────────────────────────
+const AllocationPieChart = dynamic(
+  () => import("@/components/portfolio/AllocationPieChart"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-full animate-pulse bg-gray-100 rounded-2xl" aria-label="차트 로딩 중" />
+    ),
+  }
+);
+
+const RebalanceBarChart = dynamic(
+  () => import("@/components/portfolio/RebalanceBarChart"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-full animate-pulse bg-gray-100 rounded-xl" aria-label="차트 로딩 중" />
+    ),
+  }
+);
 
 const YEAR_OPTIONS = [1, 3, 5, 10, 20, 30];
 const GUARANTEED_CAGR = 2.3;
@@ -20,7 +38,9 @@ interface PortfolioData {
   allocation: Allocation;
   baseAllocation: Allocation;
   signals: MarketSignal[];
-  indicators: { vix: number; cpi: number; usCpi: number; cli: number; sp500Change: number };
+  // M2: cpi는 백엔드 H1 수정으로 null 가능
+  indicators: { vix: number; cpi: number | null; usCpi: number; cli: number; sp500Change: number };
+  etfGroups: EtfGroup[];
   updatedAt: string;
 }
 
@@ -49,6 +69,12 @@ function calcReturn(cagr: number, years: number) {
   return parseFloat(((Math.pow(1 + cagr / 100, years) - 1) * 100).toFixed(1));
 }
 
+// M2: 피셔 정확식으로 실질 CAGR 계산. cpi가 null이면 null 반환
+function calcRealCagr(nominalCagr: number, cpi: number | null): number | null {
+  if (cpi === null) return null;
+  return parseFloat((((1 + nominalCagr / 100) / (1 + cpi / 100) - 1) * 100).toFixed(1));
+}
+
 const TABS: { key: Tab; label: string }[] = [
   { key: "allocation",  label: "자산 배분"  },
   { key: "etf",         label: "ETF 추천"   },
@@ -57,11 +83,13 @@ const TABS: { key: Tab; label: string }[] = [
 ];
 
 // 보유 비중 입력칸: 편집 중에는 원시 문자열 유지(자유 편집·비우기 허용), 클램핑은 blur에서만
-function AllocInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+function AllocInput({ value, onChange, id, ariaLabel }: { value: number; onChange: (v: number) => void; id?: string; ariaLabel?: string }) {
   const [text, setText] = useState(String(value));
   useEffect(() => { setText(String(value)); }, [value]);
   return (
     <input
+      id={id}
+      aria-label={ariaLabel}
       type="number" min={0} max={100} step={1} value={text}
       onChange={(e) => {
         const raw = e.target.value;
@@ -85,6 +113,7 @@ export default function PortfolioPage() {
   const [data,    setData]    = useState<PortfolioData | null>(null);
   const [loading, setLoading] = useState(true);
   const [noProfile, setNoProfile] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
   const [tab, setTab] = useState<Tab>("allocation");
 
   // 수익률 분석
@@ -95,15 +124,23 @@ export default function PortfolioPage() {
   const [rebalTotalInput, setRebalTotalInput] = useState("");
   const [currentAlloc,    setCurrentAlloc]    = useState<Allocation>({ guaranteed: 0, bond: 0, mixed: 0, equity: 100 });
 
+  // 탭 키보드 탐색
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
   useEffect(() => {
     fetch("/api/portfolio")
       .then((r) => {
         if (r.status === 401 || r.status === 404) { setNoProfile(true); setLoading(false); return null; }
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
       .then((d) => {
         if (d && d.allocation) { setData(d); setLoading(false); }
         else if (d) { setNoProfile(true); setLoading(false); }
+      })
+      .catch(() => {
+        setFetchError(true);
+        setLoading(false);
       });
   }, []);
 
@@ -123,12 +160,26 @@ export default function PortfolioPage() {
     </div>
   );
 
+  if (fetchError) return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center">
+      <p className="text-gray-600 text-lg font-medium">일시적 오류가 발생했습니다. 새로고침 해주세요.</p>
+      <p className="text-gray-400 text-sm">문제가 지속되면 잠시 후 다시 시도해 주세요.</p>
+      <button
+        onClick={() => window.location.reload()}
+        className="mt-2 bg-blue-500 text-white px-6 py-2.5 rounded-full font-medium hover:bg-blue-600 transition-colors"
+      >
+        새로고침
+      </button>
+    </div>
+  );
+
   if (!data) return null;
 
   // ── 공통 계산 ──────────────────────────────────────────
   const chartData     = allocationToChart(data.allocation);
   const hasSignalAdjust = data.signals.some((s) => s.allocationAdjust);
-  const etfGroups     = getEtfRecommendations(data.riskType, data.allocation);
+  const etfGroups     = data.etfGroups ?? [];
+  // M2: cpi null 대응 — null이면 실질수익률 계산 생략
   const krCpi         = data.indicators.cpi;
 
   const etfReturnRows = etfGroups.flatMap((group) =>
@@ -139,8 +190,13 @@ export default function PortfolioPage() {
 
   const portfolioReturn = parseFloat(etfReturnRows.reduce((s, r) => s + (r.portfolioPct / 100) * r.estimatedReturn, 0).toFixed(1));
   const portfolioCagr   = parseFloat(etfReturnRows.reduce((s, r) => s + (r.portfolioPct / 100) * r.cagr, 0).toFixed(1));
-  const realCagr        = parseFloat((portfolioCagr - krCpi).toFixed(1));
-  const realReturn      = parseFloat(((Math.pow(1 + realCagr / 100, selectedYears) - 1) * 100).toFixed(1));
+
+  // M2: 피셔 정확식, cpi null 안전 처리
+  const realCagr        = calcRealCagr(portfolioCagr, krCpi);
+  const realReturn      = realCagr !== null
+    ? parseFloat(((Math.pow(1 + realCagr / 100, selectedYears) - 1) * 100).toFixed(1))
+    : null;
+
   const totalInvestment = totalInvestmentInput ? parseFloat(totalInvestmentInput) * 10_000 : null;
 
   // ── 리밸런싱 계산 ───────────────────────────────────────
@@ -157,7 +213,7 @@ export default function PortfolioPage() {
   const rebalChartData = rebalRows.map((r) => ({ name: r.label, 현재: r.cur, 목표: r.tgt, color: r.color }));
 
   return (
-    <div className="space-y-5 max-w-3xl mx-auto">
+    <div className="space-y-5 max-w-3xl mx-auto px-4 sm:px-0">
 
       {/* ── 헤더 ── */}
       <div className="flex items-center justify-between">
@@ -177,13 +233,34 @@ export default function PortfolioPage() {
         <p className="text-sm text-blue-600 mt-1 leading-relaxed">{data.riskTypeDesc}</p>
       </div>
 
-      {/* ── 탭 네비게이션 ── */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 overflow-x-auto">
-        {TABS.map(({ key, label }) => (
+      {/* ── M5: 탭 네비게이션 — 모바일 360px 대응 ── */}
+      <div
+        role="tablist"
+        aria-label="투자전략 플래너 탭"
+        className="grid grid-cols-4 gap-1 bg-gray-100 rounded-xl p-1"
+      >
+        {TABS.map(({ key, label }, idx) => (
           <button
             key={key}
+            role="tab"
+            id={`tab-${key}`}
+            aria-selected={tab === key}
+            aria-controls={`panel-${key}`}
+            tabIndex={tab === key ? 0 : -1}
+            ref={(el) => { tabRefs.current[idx] = el; }}
             onClick={() => setTab(key)}
-            className={`flex-1 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
+            onKeyDown={(e) => {
+              if (e.key === "ArrowRight") {
+                const next = (idx + 1) % TABS.length;
+                setTab(TABS[next].key);
+                tabRefs.current[next]?.focus();
+              } else if (e.key === "ArrowLeft") {
+                const prev = (idx - 1 + TABS.length) % TABS.length;
+                setTab(TABS[prev].key);
+                tabRefs.current[prev]?.focus();
+              }
+            }}
+            className={`py-2 rounded-lg text-[11px] sm:text-sm font-semibold transition-all whitespace-nowrap text-center truncate ${
               tab === key ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
             }`}
           >
@@ -194,10 +271,10 @@ export default function PortfolioPage() {
 
       {/* ══════════════ 탭 1: 자산 배분 ══════════════ */}
       {tab === "allocation" && (
-        <>
+        <div role="tabpanel" id="panel-allocation" aria-labelledby="tab-allocation">
           {/* 시장 신호 */}
           {data.signals.length > 0 && (
-            <div className="space-y-2">
+            <div className="space-y-2 mb-4">
               <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">시장 신호</h2>
               {data.signals.map((s) => (
                 <div key={s.key} className={`flex items-start gap-2.5 border rounded-xl px-4 py-3 text-sm ${SEVERITY_STYLE[s.severity]}`}>
@@ -217,19 +294,14 @@ export default function PortfolioPage() {
               )}
             </div>
 
+            {/* M5: PieChart Legend 클리핑 방지 — h-auto + min-h, 모바일 세로 레이아웃 */}
             <div className="flex flex-col md:flex-row items-center gap-6">
-              <div className="w-full md:w-64 h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={chartData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} dataKey="value">
-                      {chartData.map((_, i) => (
-                        <Cell key={i} fill={COLORS[ASSET_LABELS.indexOf(chartData[i].name)]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(v) => `${v}%`} />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
+              <div className="w-full md:w-64 min-h-[16rem] h-64">
+                <AllocationPieChart
+                  data={chartData}
+                  colors={COLORS}
+                  assetLabels={ASSET_LABELS}
+                />
               </div>
 
               <div className="flex-1 w-full space-y-3">
@@ -241,7 +313,7 @@ export default function PortfolioPage() {
                     <div key={label}>
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS[i] }} />
+                          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: COLORS[i] }} />
                           <span className="text-sm text-gray-700">{label}</span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -262,12 +334,12 @@ export default function PortfolioPage() {
               </div>
             </div>
           </div>
-        </>
+        </div>
       )}
 
       {/* ══════════════ 탭 2: ETF 추천 ══════════════ */}
       {tab === "etf" && (
-        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+        <div role="tabpanel" id="panel-etf" aria-labelledby="tab-etf" className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
           <div className="mb-5">
             <h2 className="font-semibold text-gray-900">ETF 포트폴리오 추천</h2>
             <p className="text-xs text-gray-400 mt-0.5">DC·IRP 퇴직연금 계좌에서 선택 가능한 ETF 기준</p>
@@ -329,19 +401,21 @@ export default function PortfolioPage() {
 
       {/* ══════════════ 탭 3: 수익률 분석 ══════════════ */}
       {tab === "returns" && (
-        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-          {/* 헤더 + 연도 선택 */}
-          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-            <div>
-              <h2 className="font-semibold text-gray-900">수익률 분석</h2>
-              <p className="text-xs text-gray-400 mt-0.5">CAGR 기반 투자 기간별 예상 누적 수익률</p>
-            </div>
-            <div className="flex items-center gap-1.5 bg-gray-100 rounded-xl p-1">
+        <div role="tabpanel" id="panel-returns" aria-labelledby="tab-returns" className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+          {/* 헤더 */}
+          <div className="mb-4">
+            <h2 className="font-semibold text-gray-900">수익률 분석</h2>
+            <p className="text-xs text-gray-400 mt-0.5">CAGR 기반 투자 기간별 예상 누적 수익률</p>
+          </div>
+
+          {/* M5: 연도 버튼 — 모바일 wrapping 대응, grid로 고정 */}
+          <div className="mb-4">
+            <div className="grid grid-cols-6 gap-1 bg-gray-100 rounded-xl p-1">
               {YEAR_OPTIONS.map((y) => (
                 <button
                   key={y}
                   onClick={() => setSelectedYears(y)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  className={`py-1.5 rounded-lg text-xs font-semibold transition-all text-center ${
                     selectedYears === y ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
                   }`}
                 >
@@ -353,9 +427,10 @@ export default function PortfolioPage() {
 
           {/* 총투자금 입력 */}
           <div className="mb-5 flex items-center gap-3">
-            <label className="text-xs font-medium text-gray-500 whitespace-nowrap">총 투자금 (선택)</label>
+            <label htmlFor="total-investment-input" className="text-xs font-medium text-gray-500 whitespace-nowrap">총 투자금 (선택)</label>
             <div className="relative flex-1 max-w-xs">
               <input
+                id="total-investment-input"
                 type="number" min={1} placeholder="예: 3000" value={totalInvestmentInput}
                 onChange={(e) => setTotalInvestmentInput(e.target.value)}
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-blue-300"
@@ -367,44 +442,82 @@ export default function PortfolioPage() {
             )}
           </div>
 
-          {/* 포트폴리오 전체 요약 카드 */}
+          {/* ── M1: 포트폴리오 요약 카드 — CAGR/실질CAGR 항상 표시 ── */}
           <div className="mb-5 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 p-5 text-white">
             <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">
               포트폴리오 예상 수익률 — {selectedYears}년 기준
             </p>
-            {totalInvestment ? (
-              <>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
-                  <div><p className="text-[11px] text-slate-400 mb-0.5">누적 수익률 (명목)</p><p className="text-xl font-bold text-emerald-400">+{portfolioReturn}%</p></div>
-                  <div><p className="text-[11px] text-slate-400 mb-0.5">수익금</p><p className="text-xl font-bold text-emerald-400">{formatKRW(totalInvestment * portfolioReturn / 100)}</p></div>
-                  <div><p className="text-[11px] text-slate-400 mb-0.5">평가금액</p><p className="text-xl font-bold text-white">{((totalInvestment + totalInvestment * portfolioReturn / 100) / 10_000).toLocaleString("ko-KR", { maximumFractionDigits: 0 })}만원</p></div>
-                </div>
-                <div className="flex items-center gap-3 px-3 py-2 bg-slate-700/40 rounded-xl mb-3">
-                  <div className="w-2 h-2 rounded-full bg-violet-400 flex-shrink-0" />
-                  <p className="text-[11px] text-slate-400">
-                    실질 수익률 (물가 차감){" "}
-                    <span className={`font-bold text-sm ${realReturn >= 0 ? "text-violet-300" : "text-red-400"}`}>{realReturn >= 0 ? "+" : ""}{realReturn}%</span>
-                    <span className="ml-2 text-slate-500">= 명목 +{portfolioReturn}% − CPI {krCpi}%</span>
+
+            {/* 행 1: 누적 수익률 + CAGR — 항상 표시 */}
+            <div className="grid grid-cols-2 gap-4 mb-3">
+              <div>
+                <p className="text-[11px] text-slate-400 mb-0.5">누적 수익률 (명목)</p>
+                <p className="text-3xl font-bold text-emerald-400">+{portfolioReturn}%</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-slate-400 mb-0.5">연평균 수익률 (CAGR)</p>
+                <p className="text-3xl font-bold text-emerald-400">
+                  +{portfolioCagr}%<span className="text-base font-normal text-slate-400">/년</span>
+                </p>
+              </div>
+            </div>
+
+            {/* 행 2: 실질 누적 수익률 + 실질 CAGR — 항상 표시, cpi null이면 "물가 데이터 없음" */}
+            <div className="grid grid-cols-2 gap-4 mb-3">
+              <div>
+                <p className="text-[11px] text-slate-400 mb-0.5">실질 누적 수익률</p>
+                {realReturn !== null ? (
+                  <p className={`text-2xl font-bold ${realReturn >= 0 ? "text-violet-400" : "text-red-400"}`}>
+                    {realReturn >= 0 ? "+" : ""}{realReturn}%
+                  </p>
+                ) : (
+                  <p className="text-sm text-slate-500">물가 데이터 없음</p>
+                )}
+              </div>
+              <div>
+                <p className="text-[11px] text-slate-400 mb-0.5">실질 CAGR</p>
+                {realCagr !== null ? (
+                  <p className={`text-2xl font-bold ${realCagr >= 0 ? "text-violet-400" : "text-red-400"}`}>
+                    {realCagr >= 0 ? "+" : ""}{realCagr}%<span className="text-base font-normal text-slate-400">/년</span>
+                  </p>
+                ) : (
+                  <p className="text-sm text-slate-500">물가 데이터 없음</p>
+                )}
+              </div>
+            </div>
+
+            {/* 행 3: totalInvestment 있을 때만 금액 카드 추가 표시 */}
+            {totalInvestment && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3 pt-3 border-t border-slate-700">
+                <div>
+                  <p className="text-[11px] text-slate-400 mb-0.5">수익금</p>
+                  <p className="text-xl font-bold text-emerald-400">
+                    {formatKRW(totalInvestment * portfolioReturn / 100)}
                   </p>
                 </div>
-              </>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 gap-4 mb-3">
-                  <div><p className="text-[11px] text-slate-400 mb-0.5">누적 수익률 (명목)</p><p className="text-3xl font-bold text-emerald-400">+{portfolioReturn}%</p></div>
-                  <div><p className="text-[11px] text-slate-400 mb-0.5">연평균 수익률 (CAGR)</p><p className="text-3xl font-bold text-emerald-400">+{portfolioCagr}%<span className="text-base font-normal text-slate-400">/년</span></p></div>
+                <div>
+                  <p className="text-[11px] text-slate-400 mb-0.5">평가금액</p>
+                  <p className="text-xl font-bold text-white">
+                    {((totalInvestment + totalInvestment * portfolioReturn / 100) / 10_000).toLocaleString("ko-KR", { maximumFractionDigits: 0 })}만원
+                  </p>
                 </div>
-                <div className="grid grid-cols-2 gap-4 mb-3">
-                  <div><p className="text-[11px] text-slate-400 mb-0.5">실질 누적 수익률</p><p className={`text-2xl font-bold ${realReturn >= 0 ? "text-violet-400" : "text-red-400"}`}>{realReturn >= 0 ? "+" : ""}{realReturn}%</p></div>
-                  <div><p className="text-[11px] text-slate-400 mb-0.5">실질 CAGR</p><p className={`text-2xl font-bold ${realCagr >= 0 ? "text-violet-400" : "text-red-400"}`}>{realCagr >= 0 ? "+" : ""}{realCagr}%<span className="text-base font-normal text-slate-400">/년</span></p></div>
-                </div>
-              </>
+                {realReturn !== null && (
+                  <div className="col-span-2 sm:col-span-1">
+                    <p className="text-[11px] text-slate-400 mb-0.5">실질 수익금</p>
+                    <p className={`text-xl font-bold ${realReturn >= 0 ? "text-violet-300" : "text-red-400"}`}>
+                      {formatKRW(totalInvestment * realReturn / 100)}
+                    </p>
+                  </div>
+                )}
+              </div>
             )}
+
             <div className="flex items-center justify-between border-t border-slate-700 pt-3 mt-1">
               <p className="text-[11px] text-slate-500">
-                {totalInvestment
-                  ? `투자원금 ${(totalInvestment / 10_000).toLocaleString("ko-KR")}만원 · CAGR +${portfolioCagr}%/년`
-                  : `명목 CAGR +${portfolioCagr}% − 한국 CPI ${krCpi}% = 실질 ${realCagr >= 0 ? "+" : ""}${realCagr}%`}
+                {krCpi !== null
+                  ? `명목 CAGR +${portfolioCagr}% − 한국 CPI ${krCpi}% = 실질 ${realCagr !== null && realCagr >= 0 ? "+" : ""}${realCagr ?? "N/A"}%`
+                  : `명목 CAGR +${portfolioCagr}% · 물가 데이터 없음`}
+                {totalInvestment ? ` · 투자원금 ${(totalInvestment / 10_000).toLocaleString("ko-KR")}만원` : ""}
               </p>
               <span className="text-[10px] text-slate-600 bg-slate-700/60 px-2 py-0.5 rounded-full">추정치</span>
             </div>
@@ -413,9 +526,12 @@ export default function PortfolioPage() {
           {/* ETF별 수익률 테이블 */}
           <div className="space-y-2">
             {etfReturnRows.map((row) => {
-              const ret         = row.estimatedReturn;
-              const realEtfCagr = parseFloat((row.cagr - krCpi).toFixed(1));
-              const realEtfRet  = parseFloat(((Math.pow(1 + realEtfCagr / 100, selectedYears) - 1) * 100).toFixed(1));
+              const ret = row.estimatedReturn;
+              // M2: ETF별 실질 CAGR — 피셔 정확식, cpi null 안전 처리
+              const realEtfCagr = calcRealCagr(row.cagr, krCpi);
+              const realEtfRet  = realEtfCagr !== null
+                ? parseFloat(((Math.pow(1 + realEtfCagr / 100, selectedYears) - 1) * 100).toFixed(1))
+                : null;
               const retColor = ret >= 200 ? "#059669" : ret >= 80 ? "#16a34a" : ret >= 30 ? "#2563eb" : "#6b7280";
               const retBg    = ret >= 200 ? "#d1fae5" : ret >= 80 ? "#dcfce7" : ret >= 30 ? "#dbeafe" : "#f3f4f6";
               return (
@@ -429,14 +545,20 @@ export default function PortfolioPage() {
                     </div>
                     <p className="text-[11px] text-gray-400 mt-0.5">
                       CAGR +{row.cagr}% · 비중 {row.portfolioPct}%
-                      <span className="ml-2 text-violet-400">· 실질 CAGR {realEtfCagr >= 0 ? "+" : ""}{realEtfCagr}%</span>
+                      {realEtfCagr !== null && (
+                        <span className="ml-2 text-violet-400">· 실질 CAGR {realEtfCagr >= 0 ? "+" : ""}{realEtfCagr}%</span>
+                      )}
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <span className="text-sm font-bold px-3 py-1 rounded-full" style={{ color: retColor, background: retBg }}>+{ret}%</span>
-                    <p className={`text-[10px] mt-0.5 ${realEtfRet >= 0 ? "text-violet-500" : "text-red-400"}`}>
-                      실질 {realEtfRet >= 0 ? "+" : ""}{realEtfRet}%
-                    </p>
+                    {realEtfRet !== null ? (
+                      <p className={`text-[10px] mt-0.5 ${realEtfRet >= 0 ? "text-violet-500" : "text-red-400"}`}>
+                        실질 {realEtfRet >= 0 ? "+" : ""}{realEtfRet}%
+                      </p>
+                    ) : (
+                      <p className="text-[10px] mt-0.5 text-gray-400">물가 데이터 없음</p>
+                    )}
                   </div>
                 </div>
               );
@@ -451,7 +573,7 @@ export default function PortfolioPage() {
 
       {/* ══════════════ 탭 4: 리밸런싱 ══════════════ */}
       {tab === "rebalancing" && (
-        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+        <div role="tabpanel" id="panel-rebalancing" aria-labelledby="tab-rebalancing" className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
             <div>
               <h2 className="font-semibold text-gray-900">리밸런싱 계산기</h2>
@@ -469,9 +591,10 @@ export default function PortfolioPage() {
             {/* 입력 */}
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1.5">총 자산 (선택)</label>
+                <label htmlFor="rebal-total-input" className="block text-xs font-medium text-gray-500 mb-1.5">총 자산 (선택)</label>
                 <div className="relative">
                   <input
+                    id="rebal-total-input"
                     type="number" min={1} placeholder="예: 5000" value={rebalTotalInput}
                     onChange={(e) => setRebalTotalInput(e.target.value)}
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-blue-300"
@@ -496,6 +619,8 @@ export default function PortfolioPage() {
                       </div>
                       <div className="flex-1 relative">
                         <AllocInput
+                          id={`alloc-input-${a.key}`}
+                          ariaLabel={`${a.label} 현재 비중 (%)`}
                           value={currentAlloc[a.key]}
                           onChange={(v) => setCurrentAlloc((prev) => ({ ...prev, [a.key]: v }))}
                         />
@@ -512,19 +637,9 @@ export default function PortfolioPage() {
 
             {/* 결과 */}
             <div className="space-y-4">
+              {/* M5: BarChart YAxis 라벨 잘림 방지 — width를 72에서 80으로, 모바일 h-auto */}
               <div className="h-44">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={rebalChartData} layout="vertical" margin={{ top: 0, right: 32, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                    <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11 }} />
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} width={60} />
-                    <Tooltip formatter={((v: number | undefined) => [`${v ?? 0}%`]) as any} />
-                    <Bar dataKey="현재" fill="#cbd5e1" radius={[0, 2, 2, 0]} barSize={10} />
-                    <Bar dataKey="목표" radius={[0, 2, 2, 0]} barSize={10}>
-                      {rebalChartData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                <RebalanceBarChart data={rebalChartData} />
                 <div className="flex gap-4 justify-center mt-1">
                   <div className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2.5 h-2 rounded-sm bg-slate-300" />현재</div>
                   <div className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2.5 h-2 rounded-sm bg-blue-400" />목표</div>
