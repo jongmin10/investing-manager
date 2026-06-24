@@ -276,6 +276,23 @@ model MarketReport {
   generatedAt DateTime @default(now())
 }
 
+// 피터 린치 종목분석 (비동기 캐시 — ticker+snapshotDate 키)
+model LynchAnalysis {
+  id              String   @id @default(cuid())
+  ticker          String                  // "005930"
+  status          String   @default("pending") // pending | done | failed
+  result          String?                 // JSON 직렬화 LynchResult
+  snapshotDate    DateTime?               // 분석 시점 데이터 출처 추적
+  financialPeriod String?                 // "2024A"
+  model           String?
+  error           String?
+  generatedAt     DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([ticker, snapshotDate])        // 데이터 기준 날짜별 캐시
+  @@index([ticker])
+}
+
 // 투자 일기
 model JournalEntry {
   id           String   @id @default(cuid())
