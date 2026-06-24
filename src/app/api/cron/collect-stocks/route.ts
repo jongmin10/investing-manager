@@ -26,39 +26,62 @@ export const maxDuration = 60;
  * 인증: Vercel Cron 헤더 또는 내부 self-fetch(CRON_SECRET). GET/POST 모두 허용
  * (Vercel Cron 은 GET, 내부 체이닝은 POST).
  */
+/**
+ * 단일 슬라이스 처리. 각 단계(유니버스/수집/체이닝)를 독립적으로 실패 격리한다.
+ *
+ * 하드닝 배경(2026-06): 기존엔 한 단계라도 throw 하면 슬라이스가 500 으로 죽고,
+ * 그 시점에 다음 슬라이스 트리거에 도달하지 못해 **체인 전체가 침묵 사망**했다.
+ * (무료 플랜 로그가 ~1h 만에 만료돼 사후 추적도 불가) 이를 막기 위해:
+ *  - 유니버스 갱신 실패 → 무시하고 기존 rank 로 수집 진행
+ *  - 수집(collectAllStocks) 실패 → 기록만 하고 **다음 슬라이스는 계속 트리거**
+ *    (오프셋이 다른 슬라이스는 독립적으로 성공할 수 있으므로 커버리지 최대화)
+ *  - 어떤 단계도 throw 로 함수를 중단시키지 않음 → 항상 구조화된 결과 반환
+ */
 async function run(req: NextRequest, offset: number) {
-  let universe: unknown = null;
+  const out: Record<string, unknown> = { ok: true, offset, limit: SLICE };
+
+  // 1. 유니버스 갱신 — 첫 슬라이스에서만. 실패는 비치명(기존 rank 로 수집 진행).
   if (offset === 0) {
-    // 첫 슬라이스에서만 유니버스 갱신 (순위 변동 반영)
-    universe = await refreshStockUniverse(200);
+    try {
+      out.universe = await refreshStockUniverse(200);
+    } catch (err) {
+      out.universeError = String(err);
+      console.error("[cron:collect-stocks] 유니버스 갱신 실패(무시하고 수집 진행):", err);
+    }
   }
 
-  const result = await collectAllStocks(undefined, { offset, limit: SLICE });
-
-  // 다음 슬라이스 판단: rank 보유 종목 수 기준(없으면 전체)
-  const rankedCount = await prisma.stock.count({ where: { rank: { not: null } } });
-  const totalStocks = rankedCount > 0 ? rankedCount : await prisma.stock.count();
-  const nextOffset = offset + SLICE;
-  const hasMore = nextOffset < totalStocks;
-
-  if (hasMore) {
-    const baseUrl = getBaseUrl(req);
-    await triggerNextSlice(baseUrl, "/api/cron/collect-stocks", { offset: nextOffset });
+  // 2. 주가 수집 — 실패해도 다음 슬라이스 체이닝은 계속한다.
+  try {
+    const result = await collectAllStocks(undefined, { offset, limit: SLICE });
+    out.processed = result.total;
+    out.updated = result.updated;
+    out.skipped = result.skipped;
+    out.failed = result.failed.length;
+  } catch (err) {
+    out.ok = false;
+    out.collectError = String(err);
+    console.error(`[cron:collect-stocks] 슬라이스 수집 실패 offset=${offset}:`, err);
   }
 
-  return {
-    ok: true,
-    offset,
-    limit: SLICE,
-    processed: result.total,
-    updated: result.updated,
-    skipped: result.skipped,
-    failed: result.failed.length,
-    totalStocks,
-    nextOffset: hasMore ? nextOffset : null,
-    universe,
-    runAt: new Date().toISOString(),
-  };
+  // 3. 다음 슬라이스 체이닝 — 현재 슬라이스 성패와 무관하게 남은 종목이 있으면 진행.
+  try {
+    const rankedCount = await prisma.stock.count({ where: { rank: { not: null } } });
+    const totalStocks = rankedCount > 0 ? rankedCount : await prisma.stock.count();
+    const nextOffset = offset + SLICE;
+    const hasMore = nextOffset < totalStocks;
+    out.totalStocks = totalStocks;
+    out.nextOffset = hasMore ? nextOffset : null;
+
+    if (hasMore) {
+      await triggerNextSlice(getBaseUrl(req), "/api/cron/collect-stocks", { offset: nextOffset });
+    }
+  } catch (err) {
+    out.chainError = String(err);
+    console.error(`[cron:collect-stocks] 다음 슬라이스 트리거 실패 offset=${offset}:`, err);
+  }
+
+  out.runAt = new Date().toISOString();
+  return out;
 }
 
 export async function GET(req: NextRequest) {
