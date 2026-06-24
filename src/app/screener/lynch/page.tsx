@@ -127,7 +127,7 @@ export default function LynchPage() {
       timerRef.current = setTimeout(() => {
         if (!controller.signal.aborted) {
           controller.abort();
-          setErrorMsg("분석 요청 시간이 초과되었습니다 (30초). 다시 시도해 주세요.");
+          setErrorMsg("분석이 오래 걸리고 있습니다. 잠시 후 다시 시도하면 완료된 결과를 볼 수 있습니다.");
           setAnalysisState("failed");
           cleanup();
         }

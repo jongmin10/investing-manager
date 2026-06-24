@@ -32,7 +32,7 @@ export default function LynchTickerInput({ onSubmit, disabled = false }: Props) 
 
   // 마운트 시 universe 1회 fetch
   useEffect(() => {
-    fetch("/api/screener?market=ALL&sortBy=high52wRatio")
+    fetch("/api/screener?market=ALL&sortBy=high52wRatio&limit=200")
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         if (data?.items) {

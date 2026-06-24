@@ -103,7 +103,7 @@ function computePeg(per: number | null, growthPct: number | null): LynchMetric {
   let result: LynchMetric["result"] = "NA";
   let comment: string;
 
-  if (per != null && per > 0 && growthPct != null && growthPct > 0) {
+  if (per != null && per > 0 && Number.isFinite(per) && growthPct != null && growthPct > 0 && Number.isFinite(growthPct)) {
     const peg = per / growthPct;
     numericValue = parseFloat(peg.toFixed(2));
     value = `${numericValue}x`;
@@ -142,7 +142,7 @@ function computeOpMarginTrend(opMargin: number | null, opGrowth: number | null, 
   let result: LynchMetric["result"] = "NA";
   let comment: string;
 
-  if (opMargin != null) {
+  if (opMargin != null && Number.isFinite(opMargin)) {
     numericValue = parseFloat(opMargin.toFixed(1));
     value = `${numericValue}%`;
     if (opGrowth != null) {
