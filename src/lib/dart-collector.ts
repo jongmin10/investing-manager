@@ -3,8 +3,11 @@ import { mapMissingDartCodes } from "./dart-corp";
 
 const DART_BASE  = "https://opendart.fss.or.kr/api";
 // 동시 처리할 종목 수.
-// 종목당: 연도별로 [주요계정 + alotMatter + 발행주식수 + 전체계정(현금)] = 4개 API 호출.
-// 연도는 순차 처리하므로 동시 요청 상한 ≈ CONCURRENCY×4 = 16 (SQLite/Postgres ~20 한계 이내).
+// 종목당: 연도별로 [주요계정 + alotMatter + 발행주식수 + 전체계정(현금) + 자사주] = 5개 API 호출.
+// 연도는 순차 처리하므로 연도별 동시 DART 요청 상한 ≈ CONCURRENCY×5 = 20.
+// 내부자(elestock)는 연도 루프 종료 후 종목당 1회 호출 → 연도별 5개 동시 fetch 피크엔 미가산이나
+// wave 내 최대 CONCURRENCY(4)개 elestock가 동시 호출될 수 있음(DART 안전 범위).
+// DB upsert 동시성은 CONCURRENCY(=4)로 유지(Postgres 안전 범위).
 const CONCURRENCY = 4;
 // 웨이브(동시 묶음) 간 간격 — DART 부하 분산용
 const WAVE_DELAY  = 300;
@@ -49,6 +52,22 @@ interface ShareItem {
   istc_totqy:   string;
 }
 
+// 자기주식 취득·처분 현황 (tesstkAcqsDspsSttus)
+interface TreasuryItem {
+  stock_knd:      string;  // "보통주" | "우선주"
+  acqs_mth1:      string;  // 취득방법 대분류 ("총계" 행 식별용)
+  acqs_mth3:      string;  // 취득방법 소분류 ("소계"/"총계"/"합계")
+  change_qy_acqs: string;  // 당기 취득수량
+  change_qy_dsps: string;  // 당기 처분수량
+  trmend_qy:      string;  // 기말 보유수량
+}
+
+// 임원·주요주주 소유보고 (elestock)
+interface ElestockItem {
+  rcept_dt:             string; // 접수일자 "YYYY-MM-DD"
+  sp_stock_lmp_irds_cnt: string; // 특정증권등 소유 증감수량 (부호: +매수 / -매도)
+}
+
 export interface CollectFinancialsResult {
   success: boolean; total: number; updated: number;
   failed: string[]; noDartCode: number; duration: number;
@@ -67,6 +86,27 @@ function toWon(s: string): number | null {
   if (!s || s.trim() === "" || s === "-") return null;
   const n = parseFloat(s.replace(/,/g, "").trim());
   return isNaN(n) ? null : Math.round(n);
+}
+
+// 주식 수량 파싱 (자사주·내부자). 콤마 제거, "-"/빈값→null,
+// "△"/"▽" 또는 선행 "-"는 음수(매도/감소)로 처리.
+function toQty(s: string | null | undefined): number | null {
+  if (s == null) return null;
+  let t = s.trim();
+  if (t === "" || t === "-") return null;          // DART 빈값 표기
+  let triangleNeg = false;
+  if (/^[△▽]/.test(t)) { triangleNeg = true; t = t.slice(1); } // 일부 공시의 음수 표기
+  t = t.replace(/,/g, "").trim();
+  const n = parseFloat(t);
+  if (isNaN(n)) return null;
+  // △/▽ 표기면 절댓값에 음수 적용(선행 "-"와 이중부호 충돌 방지).
+  // 평범한 "-500"은 △ 없이 parseFloat 부호를 그대로 사용.
+  return triangleNeg ? -Math.abs(n) : n;
+}
+
+// DART 접수일자 정규화 — "YYYYMMDD" / "YYYY-MM-DD" 양쪽을 "YYYY-MM-DD"로.
+function normalizeDartDate(d: string): string {
+  return /^\d{8}$/.test(d) ? `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}` : d;
 }
 
 function growth(cur: number | null, prev: number | null): number | null {
@@ -196,6 +236,85 @@ async function fetchShares(dartCode: string, year: number): Promise<number | nul
   } catch { return null; }
 }
 
+/**
+ * tesstkAcqsDspsSttus: 자기주식 취득·처분 현황 (#7 자사주 매입 추이).
+ * 보통주 "총계"(acqs_mth1==="총계") 행에서 당기 취득/처분/기말보유 수량(주)을 추출.
+ * 총계 행이 없으면 보통주 개별 취득방법 행(소계/총계 제외) 합산으로 폴백.
+ */
+async function fetchTreasury(
+  dartCode: string,
+  year: number,
+): Promise<{ acqs: number | null; dsps: number | null; held: number | null }> {
+  const empty = { acqs: null, dsps: null, held: null };
+  const url = `${DART_BASE}/tesstkAcqsDspsSttus.json?crtfc_key=${dartKey()}&corp_code=${dartCode}&bsns_year=${year}&reprt_code=11011`;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(12_000) });
+    if (!res.ok) return empty;
+    const d: { status: string; list?: TreasuryItem[] } = await res.json();
+    if (d.status !== "000" || !(d.list?.length)) return empty;
+
+    const common = d.list.filter((r) => r.stock_knd === "보통주");
+    if (common.length === 0) return empty;
+
+    // 1순위: "총계" 행 (보통주 전체 합)
+    const total = common.find((r) => r.acqs_mth1 === "총계" || r.acqs_mth3 === "총계");
+    if (total) {
+      return {
+        acqs: toQty(total.change_qy_acqs),
+        dsps: toQty(total.change_qy_dsps),
+        held: toQty(total.trmend_qy),
+      };
+    }
+    // 폴백: 소계/총계/합계 행을 제외한 개별 취득방법 행 합산 (mth1·mth3 양쪽 검사로 이중합산 방지)
+    const rows = common.filter(
+      (r) => !/소계|총계|합계/.test(r.acqs_mth3 ?? "") && !/소계|총계|합계/.test(r.acqs_mth1 ?? ""),
+    );
+    const sum = (sel: (r: TreasuryItem) => string): number | null => {
+      const vals = rows.map((r) => toQty(sel(r))).filter((v): v is number => v != null);
+      return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) : null;
+    };
+    return {
+      acqs: sum((r) => r.change_qy_acqs),
+      dsps: sum((r) => r.change_qy_dsps),
+      held: sum((r) => r.trmend_qy),
+    };
+  } catch { return empty; }
+}
+
+/**
+ * elestock: 임원·주요주주 소유보고 (#6 내부자 매수 vs 매도, 최근 6개월).
+ * 연도 파라미터 없음 → 전체 이력 반환. rcept_dt가 최근 6개월 이내인 건만 필터해
+ * sp_stock_lmp_irds_cnt(증감수량, 부호 유지)를 합산. 양수=매수, 음수=매도.
+ */
+async function fetchInsider6m(
+  dartCode: string,
+): Promise<{ netBuy: number | null; buyCount: number; sellCount: number; asOf: Date | null }> {
+  const empty = { netBuy: null, buyCount: 0, sellCount: 0, asOf: null };
+  const url = `${DART_BASE}/elestock.json?crtfc_key=${dartKey()}&corp_code=${dartCode}`;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) return empty;
+    const d: { status: string; list?: ElestockItem[] } = await res.json();
+    if (d.status !== "000" || !(d.list?.length)) return empty;
+
+    // 6개월 전 컷오프 (rcept_dt "YYYY-MM-DD" 문자열 비교)
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - 6);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+    let net = 0, buy = 0, sell = 0, any = false;
+    for (const r of d.list) {
+      if (!r.rcept_dt || normalizeDartDate(r.rcept_dt) < cutoffStr) continue;
+      const q = toQty(r.sp_stock_lmp_irds_cnt);
+      if (q == null || q === 0) continue;
+      any = true;
+      net += q;
+      if (q > 0) buy++; else sell++;
+    }
+    return any ? { netBuy: net, buyCount: buy, sellCount: sell, asOf: new Date() } : empty;
+  } catch { return empty; }
+}
+
 // ── 전 종목 재무 수집 ─────────────────────────────────────
 export async function collectAllFinancials(
   options?: { offset?: number; limit?: number }
@@ -227,11 +346,12 @@ export async function collectAllFinancials(
    * 연도별 호출: 주요계정 + alotMatter + 발행주식수 + 전체계정(현금) = 4 동시 요청.
    */
   async function processYear(stockId: string, dartCode: string, year: number): Promise<boolean> {
-    const [items, alotItems, totalShares, cash] = await Promise.all([
+    const [items, alotItems, totalShares, cash, treasury] = await Promise.all([
       fetchYearlyFinancials(dartCode, year),
       fetchAlotMatter(dartCode, year),
       fetchShares(dartCode, year),
       fetchCash(dartCode, year), // 억원 단위
+      fetchTreasury(dartCode, year), // 자사주 취득/처분/기말 (주)
     ]);
 
     if (items.length === 0) return false;
@@ -283,6 +403,7 @@ export async function collectAllFinancials(
       netGrowth:     growth(netIncome, netPrev),
       opMargin, eps, bps, dps,
       totalDebt, totalEquity, cash,
+      treasuryAcqs: treasury.acqs, treasuryDsps: treasury.dsps, treasuryHeld: treasury.held,
     };
 
     await prisma.stockFinancial.upsert({
@@ -306,6 +427,22 @@ export async function collectAllFinancials(
       // 최신 연도(첫 루프)에서 실패하면 과거 연도도 대개 없음 → 조기 종료로 호출 절약
       if (y === 0 && !ok) break;
       if (y + 1 < reportYears.length) await sleep(YEAR_DELAY);
+    }
+
+    // #6 내부자: 활성 종목(재무 수집 성공)에 한해 6개월 소유보고 집계 1회 호출.
+    if (anyYear) {
+      const ins = await fetchInsider6m(stock.dartCode).catch(() => null);
+      if (ins) {
+        await prisma.stock.update({
+          where: { id: stock.id },
+          data: {
+            insiderNetBuy6m:  ins.netBuy,
+            insiderBuyCount:  ins.buyCount,
+            insiderSellCount: ins.sellCount,
+            insiderAsOf:      ins.asOf,
+          },
+        }).catch(() => {});
+      }
     }
 
     return anyYear ? "updated" : "failed";
