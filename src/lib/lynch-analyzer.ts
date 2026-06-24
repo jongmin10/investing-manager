@@ -13,11 +13,11 @@ import type {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GAP 지표 — 현 수집 파이프라인으로 확보 불가. 항상 "확인 불가"로 강제 덮어쓰기.
+// Phase 2에서 DEBT_TO_EQUITY·CASH_TO_MCAP·EPS_CAGR_3Y는 DART BS/시계열로 해소됨.
+// (데이터 결측 시에는 코드가 산출 단계에서 NA로 정직 처리하므로 강제 덮어쓰기 대상이 아님)
+// 남은 하드 GAP은 내부자 거래·자사주 매입 (소스 자체 부재) — Phase 3 예정.
 // ─────────────────────────────────────────────────────────────────────────────
 const GAP_METRIC_KEYS = new Set<LynchMetricKey>([
-  "DEBT_TO_EQUITY",
-  "CASH_TO_MCAP",
-  "EPS_CAGR_3Y",
   "INSIDER_TRADING",
   "BUYBACK_TREND",
 ]);
@@ -63,11 +63,9 @@ const SIX_CATEGORIES = new Set<SixCategory>([
   "TURNAROUND",
 ]);
 
-// 프론트 경고 표시용 라벨 (dataLimitations)
+// 프론트 경고 표시용 라벨 (dataLimitations) — Phase 3까지 남은 하드 GAP만.
+// D/E·현금/시총·EPS 3년 CAGR은 Phase 2에서 해소(데이터 있으면 산출, 없으면 개별 NA).
 const GAP_LIMITATION_LABELS = [
-  "Debt-to-Equity (부채총계 미수집)",
-  "현금/시총 (현금성자산 미수집)",
-  "EPS 3년 CAGR (다년 시계열 부재)",
   "내부자 매수·매도 (소스 없음)",
   "자사주 매입 추이 (소스 없음)",
 ];
@@ -77,6 +75,9 @@ const GAP_LIMITATION_LABELS = [
 // ─────────────────────────────────────────────────────────────────────────────
 interface ComputedMetrics {
   peg: LynchMetric;
+  debtToEquity: LynchMetric;
+  cashToMcap: LynchMetric;
+  epsCagr3y: LynchMetric;
   opMarginTrend: LynchMetric;
 }
 
@@ -135,6 +136,202 @@ function computePeg(per: number | null, growthPct: number | null): LynchMetric {
   };
 }
 
+// 금융·보험·증권업 판별 — D/E 기준(0.5)이 부적합한 섹터.
+// 은행·보험은 예수금·보험부채가 '영업상' 부채라 D/E 10~20x도 정상.
+const FINANCIAL_SECTOR_KEYWORDS = ["금융", "은행", "보험", "증권"];
+function isFinancialSector(sector: string | null): boolean {
+  if (!sector) return false;
+  return FINANCIAL_SECTOR_KEYWORDS.some((kw) => sector.includes(kw));
+}
+
+// #2 Debt-to-Equity = 부채총계 / 자본총계 (둘 다 억원). 분모 0/음수 → NA.
+// 금융/보험 계열은 부채 성격이 달라 0.5 기준이 부적합 → 값은 산출하되 result는 NA(참고용).
+function computeDebtToEquity(totalDebt: number | null, totalEquity: number | null, period: string | null, sector: string | null): LynchMetric {
+  let value: string | null = null;
+  let numericValue: number | null = null;
+  let result: LynchMetric["result"] = "NA";
+  let comment: string;
+
+  if (
+    totalDebt != null && Number.isFinite(totalDebt) && totalDebt >= 0 &&
+    totalEquity != null && Number.isFinite(totalEquity) && totalEquity > 0
+  ) {
+    const de = totalDebt / totalEquity;
+    numericValue = parseFloat(de.toFixed(2));
+    value = `${numericValue}x`;
+    if (isFinancialSector(sector)) {
+      // 금융업: PASS/FAIL 판정 보류, 수치는 참고로만 노출
+      result = "NA";
+      comment = `부채총계/자본총계 = ${numericValue} — 금융업은 부채 성격이 달라(예수금·보험부채) 일반 D/E 기준 적용 부적합 — 참고만.`;
+    } else if (de < 0.5) {
+      result = "PASS";
+      comment = `부채총계/자본총계 = ${numericValue} — 0.5 미만, 린치 기준 재무 양호.`;
+    } else {
+      result = "FAIL";
+      comment = `부채총계/자본총계 = ${numericValue} — 0.5 이상, 부채 부담 유의.`;
+    }
+  } else if (totalEquity != null && totalEquity <= 0) {
+    comment = `자본총계 ${totalEquity}억원(0 이하) — 자본잠식 가능성, D/E 산출 불가.`;
+  } else {
+    comment = "부채총계 또는 자본총계 결측으로 D/E 산출 불가.";
+  }
+
+  return {
+    key: "DEBT_TO_EQUITY",
+    label: METRIC_LABELS.DEBT_TO_EQUITY,
+    value,
+    numericValue,
+    lynchCriterion: METRIC_CRITERIA.DEBT_TO_EQUITY,
+    result,
+    comment,
+    source: value != null ? `${period ?? "최근"} DART (재무상태표)` : UNAVAILABLE,
+  };
+}
+
+// #3 현금/시총 = 현금및현금성자산 / 시가총액 (둘 다 억원). 분모 0/음수 → NA.
+function computeCashToMcap(cash: number | null, marketCap: number | null, period: string | null): LynchMetric {
+  let value: string | null = null;
+  let numericValue: number | null = null;
+  let result: LynchMetric["result"] = "NA";
+  let comment: string;
+
+  if (
+    cash != null && Number.isFinite(cash) && cash >= 0 &&
+    marketCap != null && Number.isFinite(marketCap) && marketCap > 0
+  ) {
+    const ratio = cash / marketCap;
+    numericValue = parseFloat((ratio * 100).toFixed(1)); // % 표기
+    value = `${numericValue}%`;
+    // 린치: 현금 비중이 클수록 안전마진. 20% 이상이면 의미 있는 쿠션으로 본다.
+    if (ratio >= 0.2) {
+      result = "PASS";
+      comment = `현금및현금성자산 ${cash.toLocaleString()}억 / 시총 = ${numericValue}% — 현금 쿠션 두터움(안전마진).`;
+    } else {
+      result = "FAIL";
+      comment = `현금및현금성자산 ${cash.toLocaleString()}억 / 시총 = ${numericValue}% — 현금 비중 제한적.`;
+    }
+  } else {
+    comment = "현금성자산 또는 시가총액 결측으로 현금/시총 산출 불가.";
+  }
+
+  return {
+    key: "CASH_TO_MCAP",
+    label: METRIC_LABELS.CASH_TO_MCAP,
+    value,
+    numericValue,
+    lynchCriterion: METRIC_CRITERIA.CASH_TO_MCAP,
+    result,
+    comment,
+    source: value != null ? `${period ?? "최근"} DART 현금 + 시가총액` : UNAVAILABLE,
+  };
+}
+
+// #4 EPS 3년 CAGR — 가장 오래된 연도 EPS → 최신 EPS 복리성장률.
+// 부호 전환(적자→흑자 등)이나 EPS≤0 구간은 CAGR 정의 불가 → NA + 사유.
+// 기준연도 EPS가 너무 작으면(적자탈출 직후 등) 분모가 1원에 가까워 수천% CAGR이 나옴 →
+// EPS_BASE_MIN 가드로 차단 (revenue의 GROWTH_BASE_MIN 패턴과 동일 취지).
+// series: 최신순 정렬된 {period, eps} 배열 (analyzer가 desc로 전달).
+const EPS_BASE_MIN = 10; // 기준연도 EPS 절댓값 < 10원이면 CAGR 신뢰 불가 → NA
+function computeEpsCagr3y(series: { period: string; eps: number | null }[]): LynchMetric {
+  let value: string | null = null;
+  let numericValue: number | null = null;
+  let result: LynchMetric["result"] = "NA";
+  let comment: string;
+  // 라벨은 실제 구간 수를 반영해 동적 생성 (2개년만 있으면 "1년 CAGR")
+  let label = METRIC_LABELS.EPS_CAGR_3Y;
+
+  const valid = series.filter((s) => s.eps != null && Number.isFinite(s.eps)) as { period: string; eps: number }[];
+
+  if (valid.length >= 2) {
+    const latest = valid[0];          // 최신 (desc 정렬 가정)
+    const oldest = valid[valid.length - 1];
+    const years = valid.length - 1;   // 구간 수 (3개년이면 2)
+    label = `EPS 성장률 (${years}년 CAGR)`;
+    if (latest.eps > 0 && oldest.eps >= EPS_BASE_MIN) {
+      const cagr = (Math.pow(latest.eps / oldest.eps, 1 / years) - 1) * 100;
+      if (Number.isFinite(cagr)) {
+        numericValue = parseFloat(cagr.toFixed(1));
+        value = `${numericValue}%`;
+        // 린치: 카테고리별 다르나, 일반적으로 꾸준한 두 자릿수 성장을 긍정.
+        if (cagr >= 15) {
+          result = "PASS";
+          comment = `EPS ${oldest.period}→${latest.period} ${years}년 CAGR ${numericValue}% — 두 자릿수 성장, 양호.`;
+        } else if (cagr >= 0) {
+          result = "FAIL";
+          comment = `EPS ${years}년 CAGR ${numericValue}% — 성장은 하나 둔(15% 미만).`;
+        } else {
+          result = "FAIL";
+          comment = `EPS ${years}년 CAGR ${numericValue}% — 역성장.`;
+        }
+      } else {
+        comment = "EPS CAGR 계산 결과가 유효하지 않음.";
+      }
+    } else if (latest.eps > 0 && oldest.eps > 0 && oldest.eps < EPS_BASE_MIN) {
+      // 기준연도 EPS가 양수지만 너무 작음 → 분모 효과로 CAGR 과대, 신뢰 불가
+      comment = `기준연도(${oldest.period}) EPS ${oldest.eps}원이 너무 작아 CAGR 신뢰 불가(적자탈출 직후 추정).`;
+    } else {
+      comment = `EPS에 0 이하 값 포함(${oldest.period} ${oldest.eps} / ${latest.period} ${latest.eps}) — 부호 전환 구간으로 CAGR 정의 불가.`;
+    }
+  } else {
+    comment = "EPS 다년 시계열 부족(2개년 미만)으로 3년 CAGR 산출 불가.";
+  }
+
+  return {
+    key: "EPS_CAGR_3Y",
+    label,
+    value,
+    numericValue,
+    lynchCriterion: METRIC_CRITERIA.EPS_CAGR_3Y,
+    result,
+    comment,
+    source: value != null ? "DART alotMatter (다년 EPS)" : UNAVAILABLE,
+  };
+}
+
+// #5 영업이익률 추이 — 다년 opMargin 시계열로 방향 판정. 시계열 없으면 단년+opGrowth로 근사.
+// series: 최신순 정렬된 {period, opMargin} 배열.
+function computeOpMarginTrendMulti(
+  series: { period: string; opMargin: number | null }[],
+  opGrowth: number | null,
+): LynchMetric {
+  const valid = series.filter((s) => s.opMargin != null && Number.isFinite(s.opMargin)) as { period: string; opMargin: number }[];
+
+  // 다년(2개년 이상) 시계열이 있으면 최신 vs 가장 오래된 마진 비교로 추이 판정
+  if (valid.length >= 2) {
+    const latest = valid[0];
+    const oldest = valid[valid.length - 1];
+    const numericValue = parseFloat(latest.opMargin.toFixed(1));
+    const delta = latest.opMargin - oldest.opMargin;
+    const value = `${numericValue}%`;
+    let result: LynchMetric["result"];
+    let comment: string;
+    if (delta > 0.5) {
+      result = "PASS";
+      comment = `영업이익률 ${oldest.period} ${oldest.opMargin.toFixed(1)}% → ${latest.period} ${numericValue}% (${delta >= 0 ? "+" : ""}${delta.toFixed(1)}%p) — 개선 추세.`;
+    } else if (delta < -0.5) {
+      result = "FAIL";
+      comment = `영업이익률 ${oldest.period} ${oldest.opMargin.toFixed(1)}% → ${latest.period} ${numericValue}% (${delta.toFixed(1)}%p) — 둔화 추세.`;
+    } else {
+      result = "FAIL";
+      comment = `영업이익률 ${oldest.period} ${oldest.opMargin.toFixed(1)}% → ${latest.period} ${numericValue}% — 보합(뚜렷한 개선 아님).`;
+    }
+    return {
+      key: "OP_MARGIN_TREND",
+      label: METRIC_LABELS.OP_MARGIN_TREND,
+      value,
+      numericValue,
+      lynchCriterion: METRIC_CRITERIA.OP_MARGIN_TREND,
+      result,
+      comment,
+      source: `${oldest.period}~${latest.period} DART (다년)`,
+    };
+  }
+
+  // 폴백: 단년 + opGrowth 방향 근사 (Phase 1 동작 유지)
+  const latest = valid[0];
+  return computeOpMarginTrend(latest?.opMargin ?? null, opGrowth, latest?.period ?? null);
+}
+
 // 영업이익률 추이 — 당년 opMargin + opGrowth 방향으로 근사 (다년 시계열 부재).
 function computeOpMarginTrend(opMargin: number | null, opGrowth: number | null, period: string | null): LynchMetric {
   let value: string | null = null;
@@ -187,9 +384,6 @@ function gapMetric(key: LynchMetricKey, reason: string): LynchMetric {
 }
 
 const GAP_REASONS: Record<string, string> = {
-  DEBT_TO_EQUITY: "현 DART 수집은 손익+자본총계만 보유, 부채총계 미수집 — 확인 불가(Phase 2 보강 예정).",
-  CASH_TO_MCAP: "시총은 보유하나 현금성자산 미수집 — 확인 불가(Phase 2 보강 예정).",
-  EPS_CAGR_3Y: "단년 재무만 upsert, 3년 시계열 부재 — 확인 불가(Phase 2 다년 수집 예정).",
   INSIDER_TRADING: "내부자 거래 소스 없음 — 확인 불가(Phase 3 예정).",
   BUYBACK_TREND: "자사주 매입 소스 없음 — 확인 불가(Phase 3 예정).",
 };
@@ -210,13 +404,14 @@ async function buildStockContext(ticker: string): Promise<
   });
   if (!snapshot) return { ok: false, code: 409, message: "아직 데이터 수집 전입니다." };
 
-  const financial = await prisma.stockFinancial.findFirst({
-    where: { stockId: ticker, period: { endsWith: "A" } }, // 연간 우선
+  // 연간 시계열 (최신순) — EPS CAGR·마진 추이 산출용.
+  const annualSeries = await prisma.stockFinancial.findMany({
+    where: { stockId: ticker, period: { endsWith: "A" } },
     orderBy: { period: "desc" },
   });
-  // 연간이 없으면 가장 최근 기간(분기 포함)으로 폴백
+  // 연간이 하나도 없으면 가장 최근 기간(분기 포함) 단건으로 폴백
   const fin =
-    financial ??
+    annualSeries[0] ??
     (await prisma.stockFinancial.findFirst({
       where: { stockId: ticker },
       orderBy: { period: "desc" },
@@ -226,7 +421,20 @@ async function buildStockContext(ticker: string): Promise<
   const per = snapshot.per ?? snapshot.cnsPer ?? null;
   const growth = fin?.netGrowth ?? null;
   const peg = computePeg(per, growth);
-  const opMarginTrend = computeOpMarginTrend(fin?.opMargin ?? null, fin?.opGrowth ?? null, fin?.period ?? null);
+
+  // #2 D/E, #3 현금/시총 — 최신 연간 재무의 BS 항목 사용.
+  // D/E는 섹터(금융/보험)에 따라 기준 적용 여부가 달라 stock.sector 전달.
+  const debtToEquity = computeDebtToEquity(fin?.totalDebt ?? null, fin?.totalEquity ?? null, fin?.period ?? null, stock.sector ?? null);
+  const cashToMcap = computeCashToMcap(fin?.cash ?? null, snapshot.marketCap ?? null, fin?.period ?? null);
+
+  // #4 EPS 3년 CAGR — 연간 시계열 EPS (최신순)
+  const epsCagr3y = computeEpsCagr3y(annualSeries.map((f) => ({ period: f.period, eps: f.eps })));
+
+  // #5 영업이익률 추이 — 연간 시계열 opMargin (최신순), 없으면 단년+opGrowth 폴백
+  const opMarginTrend = computeOpMarginTrendMulti(
+    annualSeries.map((f) => ({ period: f.period, opMargin: f.opMargin })),
+    fin?.opGrowth ?? null,
+  );
 
   const market = (stock.market === "KOSDAQ" ? "KOSDAQ" : "KOSPI") as "KOSPI" | "KOSDAQ";
 
@@ -248,13 +456,27 @@ async function buildStockContext(ticker: string): Promise<
     `순이익: ${fin?.netIncome != null ? `${fin.netIncome.toLocaleString()}억원` : "확인 불가"}  순이익성장 YoY: ${fmtNum(fin?.netGrowth) ?? "확인 불가"}%`,
     `영업이익률: ${fmtNum(fin?.opMargin) ?? "확인 불가"}%`,
     `EPS: ${fin?.eps != null ? `${fin.eps.toLocaleString()}원` : "확인 불가"}  BPS: ${fin?.bps != null ? `${fin.bps.toLocaleString()}원` : "확인 불가"}`,
+    `부채총계: ${fin?.totalDebt != null ? `${fin.totalDebt.toLocaleString()}억원` : "확인 불가"}  자본총계: ${fin?.totalEquity != null ? `${fin.totalEquity.toLocaleString()}억원` : "확인 불가"}  현금성자산: ${fin?.cash != null ? `${fin.cash.toLocaleString()}억원` : "확인 불가"}`,
+    `연간 재무 수집연도: ${annualSeries.length > 0 ? annualSeries.map((f) => f.period).join(", ") : "없음"}`,
     "",
     "[코드가 계산한 핵심 지표 — 이 값을 그대로 '사실'로 사용하라]",
     `PEG = ${peg.value ?? "확인 불가"} (${peg.comment})`,
+    `Debt-to-Equity = ${debtToEquity.value ?? "확인 불가"} (${debtToEquity.comment})`,
+    `현금/시총 = ${cashToMcap.value ?? "확인 불가"} (${cashToMcap.comment})`,
+    `EPS 3년 CAGR = ${epsCagr3y.value ?? "확인 불가"} (${epsCagr3y.comment})`,
     `영업이익률 추이 = ${opMarginTrend.value ?? "확인 불가"} (${opMarginTrend.comment})`,
     "",
     "[확인 불가 지표 — 반드시 '공시에서 확인 불가'로 처리하고 숫자를 지어내지 마라]",
-    "- Debt-to-Equity, 현금/시총, EPS 3년 CAGR, 내부자 매수·매도, 자사주 매입 추이",
+    `- 항상 확인 불가: 내부자 매수·매도, 자사주 매입 추이`,
+    ...(() => {
+      // 데이터 결측으로 산출 불가한 지표만 추가 경고 (값이 있으면 LLM이 그대로 사용)
+      const naComputed = [
+        debtToEquity.value == null ? "Debt-to-Equity" : null,
+        cashToMcap.value == null ? "현금/시총" : null,
+        epsCagr3y.value == null ? "EPS 3년 CAGR" : null,
+      ].filter((s): s is string => s != null);
+      return naComputed.length > 0 ? [`- 이번 종목은 데이터 결측으로 확인 불가: ${naComputed.join(", ")}`] : [];
+    })(),
   ].join("\n");
 
   return {
@@ -267,7 +489,7 @@ async function buildStockContext(ticker: string): Promise<
       snapshotDate: snapshot.date,
       financialPeriod: fin?.period ?? null,
       facts,
-      computed: { peg, opMarginTrend },
+      computed: { peg, debtToEquity, cashToMcap, epsCagr3y, opMarginTrend },
     },
   };
 }
@@ -307,7 +529,7 @@ ${ctx.facts}
     "howItMakesMoney": "어떻게 돈을 버는가 (50자 이내)",
     "biggestRisk": "무엇이 망가지면 무너지는가 (50자 이내)"
   },
-  "checklistComments": { "PEG": "한 줄 코멘트", "OP_MARGIN_TREND": "한 줄 코멘트" },
+  "checklistComments": { "PEG": "한 줄 코멘트", "DEBT_TO_EQUITY": "한 줄 코멘트", "CASH_TO_MCAP": "한 줄 코멘트", "EPS_CAGR_3Y": "한 줄 코멘트", "OP_MARGIN_TREND": "한 줄 코멘트" },
   "greenFlags": [
     {"label": "이름/발음이 지루한가", "result": "PASS|FAIL|NA", "comment": "한 줄"},
     {"label": "사업이 따분·혐오스러운가", "result": "PASS|FAIL|NA", "comment": "한 줄"},
@@ -328,7 +550,8 @@ ${ctx.facts}
 }
 
 주의:
-- 내부자/자사주/기관보유율/부채비율/현금 관련 항목은 데이터가 없으므로 result는 "NA", comment는 "공시에서 확인 불가" 취지로 적어라. 숫자를 추정하지 마라.
+- 내부자/자사주/기관보유율 관련 항목은 데이터 소스가 없으므로 result는 "NA", comment는 "공시에서 확인 불가" 취지로 적어라. 숫자를 추정하지 마라.
+- 부채비율(D/E)·현금/시총·EPS 3년 CAGR·영업이익률 추이는 위 '코드가 계산한 핵심 지표'에 값이 있으면 그 값을 사실로 받아들이고, "확인 불가"로 표시된 경우에만 NA로 처리하라. checklistComments에는 해당 지표에 대한 해석 코멘트만 한 줄로 적어라(숫자 재계산 금지).
 - greenFlags는 정확히 6개, redFlags는 정확히 5개, categories는 1~2개.
 - 모든 텍스트는 한국어. 재무용어 영어 병기 허용.`;
 }
@@ -415,21 +638,25 @@ function buildResult(ctx: StockContext, raw: LlmRaw): LynchResult {
     categories.push({ type: "STALWART", weightPct: null, rationale: "(LLM 분류 실패 — 기본 분류, 확인 필요)" });
   }
 
-  // ② checklist — 코드 산출(PEG·영업이익률) + GAP 강제 "확인 불가"
+  // ② checklist — 코드 산출 지표(PEG·D/E·현금/시총·EPS CAGR·영업이익률) + 하드 GAP 강제.
+  // 코드 산출 지표는 데이터 결측 시 산출 함수가 result:"NA"·value:null로 정직 처리하므로
+  // 별도 강제 덮어쓰기가 불필요(LLM은 checklist 값을 만들지 않고 코멘트만 보강).
+  const computedByKey: Partial<Record<LynchMetricKey, LynchMetric>> = {
+    PEG: ctx.computed.peg,
+    DEBT_TO_EQUITY: ctx.computed.debtToEquity,
+    CASH_TO_MCAP: ctx.computed.cashToMcap,
+    EPS_CAGR_3Y: ctx.computed.epsCagr3y,
+    OP_MARGIN_TREND: ctx.computed.opMarginTrend,
+  };
   const checklist: LynchMetric[] = METRIC_ORDER.map((key) => {
-    if (key === "PEG") {
-      const m = { ...ctx.computed.peg };
-      const llmComment = raw.checklistComments?.PEG?.trim();
+    const computed = computedByKey[key];
+    if (computed) {
+      const m = { ...computed };
+      const llmComment = raw.checklistComments?.[key]?.trim();
       if (llmComment && m.value != null) m.comment = `${m.comment} ${llmComment}`;
       return m;
     }
-    if (key === "OP_MARGIN_TREND") {
-      const m = { ...ctx.computed.opMarginTrend };
-      const llmComment = raw.checklistComments?.OP_MARGIN_TREND?.trim();
-      if (llmComment && m.value != null) m.comment = `${m.comment} ${llmComment}`;
-      return m;
-    }
-    // GAP 지표 — LLM이 뭘 넣었든 무시하고 강제 "확인 불가"
+    // 하드 GAP 지표(내부자/자사주) — LLM이 뭘 넣었든 무시하고 강제 "확인 불가"
     return gapMetric(key, GAP_REASONS[key] ?? UNAVAILABLE);
   });
 
