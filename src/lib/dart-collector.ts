@@ -2,21 +2,40 @@ import { prisma } from "./prisma";
 import { mapMissingDartCodes } from "./dart-corp";
 
 const DART_BASE  = "https://opendart.fss.or.kr/api";
-// 동시 처리할 종목 수 (종목당 3개 API 호출 → 최대 CONCURRENCY×3 동시 요청)
+// 동시 처리할 종목 수.
+// 종목당: 연도별로 [주요계정 + alotMatter + 발행주식수 + 전체계정(현금)] = 4개 API 호출.
+// 연도는 순차 처리하므로 동시 요청 상한 ≈ CONCURRENCY×4 = 16 (SQLite/Postgres ~20 한계 이내).
 const CONCURRENCY = 4;
 // 웨이브(동시 묶음) 간 간격 — DART 부하 분산용
 const WAVE_DELAY  = 300;
+// 종목당 연도 루프 사이 간격 — DART rate limit 분산 (3개년 수집 시 호출량 3배)
+const YEAR_DELAY  = 200;
+// 수집 대상 연도 수 (EPS 3년 CAGR·마진 추이용 시계열)
+const YEARS_BACK  = 3;
 
 const REVENUE_KEYWORDS          = ["매출액", "수익(매출액)", "영업수익", "매출"];
 const REVENUE_FINANCIAL_KEYWORDS = ["이자수익"];   // 금융·보험사 폴백
 const OP_PROFIT_KEYWORDS         = ["영업이익"];
 const NET_INCOME_KEYWORDS        = ["당기순이익"];
 
+// 현금및현금성자산 (전체재무제표 fnlttSinglAcntAll). 표기 변형 대응:
+// account_id 우선(IFRS 표준코드), 없으면 account_nm 포함 매칭.
+const CASH_ACCOUNT_IDS   = ["ifrs-full_CashAndCashEquivalents", "ifrs_CashAndCashEquivalents"];
+const CASH_NAME_KEYWORDS = ["현금및현금성자산", "현금및현금 성자산", "현금 및 현금성자산"];
+
 interface DartItem {
   sj_div:        string;
   account_nm:    string;
   thstrm_amount: string;
   frmtrm_amount: string;
+}
+
+// 전체재무제표(fnlttSinglAcntAll)는 account_id(IFRS 표준코드)를 추가로 제공.
+interface DartAllItem {
+  sj_div:        string;
+  account_id:    string;
+  account_nm:    string;
+  thstrm_amount: string;
 }
 
 interface AlotItem {
@@ -62,6 +81,36 @@ function findAccount(items: DartItem[], keywords: string[]): DartItem | undefine
   );
 }
 
+/**
+ * BS 계정(자본총계·부채총계) 행 탐색.
+ * 1순위: account_nm 정확일치. 실패 시 includes() 폴백 (IFRS 변형 표기 대응:
+ * "지배기업 소유주에게 귀속되는 자본총계" 등). 오매칭 방지를 위해 excludeKw 적용.
+ * 폴백 진입 시 운영 모니터링용 경고 로그를 남긴다.
+ */
+function findBsAccount(
+  items: DartItem[],
+  exactName: string,
+  includeKw: string,
+  excludeKw: string[],
+  ctx: { stockId: string; period: string; label: string },
+): DartItem | undefined {
+  const bsRows = items.filter((i) => i.sj_div === "BS");
+  // 1순위: 정확일치
+  const exact = bsRows.find((i) => i.account_nm === exactName);
+  if (exact) return exact;
+  // 폴백: includes() (제외 키워드로 오매칭 차단)
+  const fuzzy = bsRows.find((i) => {
+    const nm = i.account_nm ?? "";
+    return nm.includes(includeKw) && !excludeKw.some((ex) => nm.includes(ex));
+  });
+  if (fuzzy) {
+    console.warn(
+      `[dart-collector] BS 정확일치 실패 → includes 폴백: ${ctx.label} (${ctx.stockId} ${ctx.period}) account_nm="${fuzzy.account_nm}"`,
+    );
+  }
+  return fuzzy;
+}
+
 function sleep(ms: number) { return new Promise<void>((r) => setTimeout(r, ms)); }
 
 function dartKey() {
@@ -84,6 +133,40 @@ async function fetchYearlyFinancials(dartCode: string, year: number): Promise<Da
     if (data.status === "000" && (data.list?.length ?? 0) > 0) return data.list!;
   }
   return [];
+}
+
+/**
+ * fnlttSinglAcntAll: 전체재무제표 — 현금및현금성자산(BS) 추출용.
+ * 주요계정(fnlttSinglAcnt)에는 현금 항목이 없어 전체계정 API를 별도 호출한다.
+ * 반환: 현금및현금성자산 (억원 단위 — processYear에서 추가 변환 불필요) 또는 null.
+ */
+async function fetchCash(dartCode: string, year: number): Promise<number | null> {
+  const key = dartKey();
+  // CFS(연결) 우선, 없으면 OFS(별도). sj_div=BS, fs_div=재무제표구분.
+  for (const fsDiv of ["CFS", "OFS"]) {
+    const url = `${DART_BASE}/fnlttSinglAcntAll.json?crtfc_key=${key}&corp_code=${dartCode}&bsns_year=${year}&reprt_code=11011&fs_div=${fsDiv}`;
+    let res: Response;
+    try { res = await fetch(url, { signal: AbortSignal.timeout(15_000) }); } catch { continue; }
+    if (!res.ok) continue;
+    let data: { status: string; list?: DartAllItem[] };
+    try { data = await res.json(); } catch { continue; }
+    if (data.status !== "000" || !(data.list?.length)) continue;
+
+    const bsRows = data.list.filter((i) => i.sj_div === "BS");
+    // 1) IFRS account_id 정확 매칭 우선
+    let row = bsRows.find((i) => CASH_ACCOUNT_IDS.includes(i.account_id));
+    // 2) 폴백: 계정명 포함 매칭 (표기 변형 대응)
+    if (!row) {
+      row = bsRows.find((i) => {
+        const nm = (i.account_nm ?? "").replace(/\s/g, "");
+        return CASH_NAME_KEYWORDS.some((kw) => nm.includes(kw.replace(/\s/g, "")));
+      });
+    }
+    // 억원 단위로 반환 (다른 BS 항목 totalDebt/totalEquity와 단위 일관)
+    const cash = row ? toEokwon(row.thstrm_amount) : null;
+    if (cash != null) return cash;
+  }
+  return null;
 }
 
 /** alotMatter: EPS(연결주당순이익) + DPS(주당현금배당금) */
@@ -134,20 +217,24 @@ export async function collectAllFinancials(
   let updated = 0, noDartCode = 0;
 
   const now        = new Date();
-  const reportYear = now.getMonth() >= 3 ? now.getFullYear() - 1 : now.getFullYear() - 2;
+  // 가장 최근 확정 회계연도. 4월(getMonth()>=3) 이전엔 직전연도 사업보고서 미공시 → 2년 전.
+  const latestYear = now.getMonth() >= 3 ? now.getFullYear() - 1 : now.getFullYear() - 2;
+  // 시계열: latestYear, latestYear-1, latestYear-2 (예: 2024A/2023A/2022A)
+  const reportYears = Array.from({ length: YEARS_BACK }, (_, k) => latestYear - k);
 
-  // 단일 종목 처리 (API 호출 → 파싱 → upsert)
-  async function processOne(stock: { id: string; dartCode: string | null }): Promise<"updated" | "failed" | "noDart"> {
-    if (!stock.dartCode) return "noDart";
-
-    // 3개 API 병렬 호출
-    const [items, alotItems, totalShares] = await Promise.all([
-      fetchYearlyFinancials(stock.dartCode, reportYear),
-      fetchAlotMatter(stock.dartCode, reportYear),
-      fetchShares(stock.dartCode, reportYear),
+  /**
+   * 단일 종목·단일 연도 처리. 성공 시 upsert 후 true, 데이터 없으면 false.
+   * 연도별 호출: 주요계정 + alotMatter + 발행주식수 + 전체계정(현금) = 4 동시 요청.
+   */
+  async function processYear(stockId: string, dartCode: string, year: number): Promise<boolean> {
+    const [items, alotItems, totalShares, cash] = await Promise.all([
+      fetchYearlyFinancials(dartCode, year),
+      fetchAlotMatter(dartCode, year),
+      fetchShares(dartCode, year),
+      fetchCash(dartCode, year), // 억원 단위
     ]);
 
-    if (items.length === 0) return "failed";
+    if (items.length === 0) return false;
 
     // ── 손익계산서 ────────────────────────────────────────
     // 금융·보험사는 "매출액" 대신 "이자수익"으로 폴백
@@ -166,10 +253,18 @@ export async function collectAllFinancials(
     const opMargin  = revenue && revenue > 0 && opProfit != null
       ? parseFloat((opProfit / revenue * 100).toFixed(1)) : null;
 
-    // ── BPS: 자본총계 / 발행주식수 ───────────────────────
-    // CFS 자본총계는 목록에서 첫 번째로 나오는 자본총계 (연결)
-    const equityRow  = items.find((i) => i.sj_div === "BS" && i.account_nm === "자본총계");
+    // ── 재무상태표(BS): 부채총계·자본총계 (주요계정에 포함) ─
+    // 정확일치 우선, 실패 시 IFRS 변형 표기를 includes()로 폴백 매칭.
+    // 자본총계: "이익잉여금" 등 부분합 행 오매칭 차단. 부채총계: "유동/비유동부채" 차단.
+    const period   = `${year}A`;
+    const equityRow  = findBsAccount(items, "자본총계", "자본총계", ["이익잉여금", "자본금"], { stockId, period, label: "자본총계" });
+    const debtRow    = findBsAccount(items, "부채총계", "부채총계", ["유동부채", "비유동부채"], { stockId, period, label: "부채총계" });
     const equityWon  = equityRow ? parseFloat(equityRow.thstrm_amount.replace(/,/g, "")) : null;
+    const totalEquity = toEokwon(equityRow?.thstrm_amount ?? "");
+    const totalDebt   = toEokwon(debtRow?.thstrm_amount ?? "");
+    // cash는 fetchCash가 이미 억원 단위로 반환 (추가 변환 불필요)
+
+    // ── BPS: 자본총계 / 발행주식수 ───────────────────────
     const bps        = equityWon && totalShares && totalShares > 0
       ? Math.round(equityWon / totalShares) : null;
 
@@ -181,22 +276,39 @@ export async function collectAllFinancials(
     const eps = epsRow ? toWon(epsRow.thstrm) : null;
     const dps = dpsRow ? toWon(dpsRow.thstrm) : null;
 
-    const period = `${reportYear}A`;
     const fields = {
       revenue, operatingProfit: opProfit, netIncome,
       revenueGrowth: growth(revenue, revPrev),
       opGrowth:      growth(opProfit, opPrev),
       netGrowth:     growth(netIncome, netPrev),
       opMargin, eps, bps, dps,
+      totalDebt, totalEquity, cash,
     };
 
     await prisma.stockFinancial.upsert({
-      where:  { stockId_period: { stockId: stock.id, period } },
-      create: { stockId: stock.id, period, ...fields },
+      where:  { stockId_period: { stockId, period } },
+      create: { stockId, period, ...fields },
       update: fields,
     });
 
-    return "updated";
+    return true;
+  }
+
+  // 단일 종목 처리 — 최근 3개년을 순차 수집 (연도 간 YEAR_DELAY 슬립으로 rate limit 분산).
+  // 최신 연도에서 데이터가 전혀 없으면 상장 폐지/신규상장 등으로 보고 failed 처리.
+  async function processOne(stock: { id: string; dartCode: string | null }): Promise<"updated" | "failed" | "noDart"> {
+    if (!stock.dartCode) return "noDart";
+
+    let anyYear = false;
+    for (let y = 0; y < reportYears.length; y++) {
+      const ok = await processYear(stock.id, stock.dartCode, reportYears[y]).catch(() => false);
+      anyYear = anyYear || ok;
+      // 최신 연도(첫 루프)에서 실패하면 과거 연도도 대개 없음 → 조기 종료로 호출 절약
+      if (y === 0 && !ok) break;
+      if (y + 1 < reportYears.length) await sleep(YEAR_DELAY);
+    }
+
+    return anyYear ? "updated" : "failed";
   }
 
   // CONCURRENCY개씩 동시 처리 (종목당 700ms 순차 대기 제거)

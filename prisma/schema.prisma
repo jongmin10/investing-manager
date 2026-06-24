@@ -214,6 +214,10 @@ model StockFinancial {
   eps             Float?   // 주당순이익 (원) — alotMatter (연결)주당순이익
   bps             Float?   // 주당순자산 (원) — 자본총계 / 발행주식수
   dps             Float?   // 주당배당금 (원) — alotMatter 보통주 현금배당금
+  // Phase 2 (피터 린치 GAP 보강): 재무상태표(BS) 항목 — 억원 단위
+  totalDebt       Float?   // 부채총계 (억원) — fnlttSinglAcnt BS "부채총계"
+  totalEquity     Float?   // 자본총계 (억원) — fnlttSinglAcnt BS "자본총계"
+  cash            Float?   // 현금및현금성자산 (억원) — fnlttSinglAcntAll BS
 
   @@unique([stockId, period])
   @@index([stockId])
