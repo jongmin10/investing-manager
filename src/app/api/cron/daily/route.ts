@@ -39,11 +39,13 @@ export async function GET(req: NextRequest) {
     console.error("[cron] 경제지표 수집 오류:", err);
   }
 
-  // 2. 주가 스냅샷 수집 — 슬라이스 0 트리거 (유니버스 갱신은 슬라이스 0 내부에서 수행)
+  // 2. 주가 스냅샷 수집 — 유니버스 갱신 단계를 먼저 트리거.
+  //    refresh-universe 가 유니버스 갱신(~36s) 후 collect-stocks offset 0(순수 수집)을
+  //    트리거한다. 유니버스+수집을 한 invocation 에서 돌리면 60s 초과로 타임아웃나므로 분리.
   try {
-    await triggerNextSlice(baseUrl, "/api/cron/collect-stocks", { offset: 0 });
+    await triggerNextSlice(baseUrl, "/api/cron/refresh-universe", {});
     results.stocks = { triggered: true };
-    console.log("[cron] 주가 슬라이스 수집 트리거 (offset 0)");
+    console.log("[cron] 유니버스 갱신→주가 수집 체인 트리거");
   } catch (err) {
     results.stocksError = String(err);
     console.error("[cron] 주가 수집 트리거 오류:", err);
