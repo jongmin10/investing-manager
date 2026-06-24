@@ -168,6 +168,11 @@ model Stock {
   dartCode    String?                     // DART 고유번호 (재무데이터 수집용)
   marketCap   Float?                      // 시가총액(억) — 동적 유니버스 갱신 시 기록
   rank        Int?                        // 시총 순위 (1=최상위). 수집 대상/정렬 기준
+  // Phase 3 (내부자 거래): 최근 6개월 임원·주요주주 소유보고 집계 (시점성 — elestock)
+  insiderNetBuy6m  Float?                 // 6M 순매수 수량 (주, 음수=순매도) — sp_stock_lmp_irds_cnt 합
+  insiderBuyCount  Int?                   // 6M 매수(증가) 보고 건수
+  insiderSellCount Int?                   // 6M 매도(감소) 보고 건수
+  insiderAsOf      DateTime?              // 내부자 집계 기준 시각
 
   snapshots  StockSnapshot[]
   financials StockFinancial[]
@@ -218,6 +223,10 @@ model StockFinancial {
   totalDebt       Float?   // 부채총계 (억원) — fnlttSinglAcnt BS "부채총계"
   totalEquity     Float?   // 자본총계 (억원) — fnlttSinglAcnt BS "자본총계"
   cash            Float?   // 현금및현금성자산 (억원) — fnlttSinglAcntAll BS
+  // Phase 3 (자사주): 연도별 보통주 자사주 — 단위 '주' (tesstkAcqsDspsSttus 총계 행)
+  treasuryAcqs    Float?   // 당기 자사주 취득수량 (주)
+  treasuryDsps    Float?   // 당기 자사주 처분수량 (주)
+  treasuryHeld    Float?   // 기말 자사주 보유수량 (주)
 
   @@unique([stockId, period])
   @@index([stockId])

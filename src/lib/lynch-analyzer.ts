@@ -12,15 +12,13 @@ import type {
 // docs/*.txt 를 읽지 않는다 — 이유는 lynch-policy.ts 상단 주석 참고.
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GAP 지표 — 현 수집 파이프라인으로 확보 불가. 항상 "확인 불가"로 강제 덮어쓰기.
-// Phase 2에서 DEBT_TO_EQUITY·CASH_TO_MCAP·EPS_CAGR_3Y는 DART BS/시계열로 해소됨.
-// (데이터 결측 시에는 코드가 산출 단계에서 NA로 정직 처리하므로 강제 덮어쓰기 대상이 아님)
-// 남은 하드 GAP은 내부자 거래·자사주 매입 (소스 자체 부재) — Phase 3 예정.
+// GAP 지표 — 현 수집 파이프라인으로 확보 불가한 체크리스트 지표.
+// Phase 2에서 DEBT_TO_EQUITY·CASH_TO_MCAP·EPS_CAGR_3Y, Phase 3에서 INSIDER_TRADING·
+// BUYBACK_TREND가 모두 DART 소스로 해소됨 → 하드 GAP(체크리스트) 없음.
+// 데이터 결측 시에는 각 산출 함수가 NA로 정직 처리(강제 덮어쓰기 불필요).
+// 남은 GAP은 ④그린플래그의 '기관 보유율<5%'(DART 미제공)뿐 — 해당 플래그만 NA 강제.
 // ─────────────────────────────────────────────────────────────────────────────
-const GAP_METRIC_KEYS = new Set<LynchMetricKey>([
-  "INSIDER_TRADING",
-  "BUYBACK_TREND",
-]);
+const GAP_METRIC_KEYS = new Set<LynchMetricKey>([]);
 
 const UNAVAILABLE = "공시에서 확인 불가";
 
@@ -63,11 +61,11 @@ const SIX_CATEGORIES = new Set<SixCategory>([
   "TURNAROUND",
 ]);
 
-// 프론트 경고 표시용 라벨 (dataLimitations) — Phase 3까지 남은 하드 GAP만.
-// D/E·현금/시총·EPS 3년 CAGR은 Phase 2에서 해소(데이터 있으면 산출, 없으면 개별 NA).
+// 프론트 경고 표시용 라벨 (dataLimitations) — 영구 미수집 항목만.
+// 체크리스트 7지표는 Phase 1~3에서 모두 DART 소스 확보(데이터 있으면 산출, 없으면 개별 NA).
+// 남은 미수집은 ④그린플래그 '기관 보유율<5%'뿐.
 const GAP_LIMITATION_LABELS = [
-  "내부자 매수·매도 (소스 없음)",
-  "자사주 매입 추이 (소스 없음)",
+  "기관 보유율 (DART 미제공)",
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -79,6 +77,8 @@ interface ComputedMetrics {
   cashToMcap: LynchMetric;
   epsCagr3y: LynchMetric;
   opMarginTrend: LynchMetric;
+  insiderTrading: LynchMetric;
+  buybackTrend: LynchMetric;
 }
 
 interface StockContext {
@@ -369,6 +369,117 @@ function computeOpMarginTrend(opMargin: number | null, opGrowth: number | null, 
   };
 }
 
+// #6 내부자 매수 vs 매도 (최근 6개월) — elestock 임원·주요주주 소유보고 집계.
+// netBuy = 증감수량 합(주, 음수=순매도). 매수/매도 건수 동반. 데이터 없으면 NA.
+function computeInsiderTrading(
+  netBuy: number | null,
+  buyCount: number | null,
+  sellCount: number | null,
+  asOf: Date | null,
+): LynchMetric {
+  let value: string | null = null;
+  let numericValue: number | null = null;
+  let result: LynchMetric["result"] = "NA";
+  let comment: string;
+
+  if (asOf != null && netBuy != null && Number.isFinite(netBuy)) {
+    numericValue = netBuy;
+    const buys = buyCount ?? 0;
+    const sells = sellCount ?? 0;
+    const cnt = `(매수 ${buys}건 / 매도 ${sells}건)`;
+    if (netBuy > 0) {
+      value = `순매수 +${netBuy.toLocaleString()}주`;
+      result = "PASS";
+      comment = `최근 6개월 내부자 순매수 ${netBuy.toLocaleString()}주 ${cnt} — 내부자 매수 우위(린치 호재). 단 스톡옵션 행사·상여 등 비자발적 취득 포함 가능 — 건수와 병행 판단.`;
+    } else if (netBuy < 0) {
+      value = `순매도 ${netBuy.toLocaleString()}주`;
+      result = "FAIL";
+      comment = `최근 6개월 내부자 순매도 ${Math.abs(netBuy).toLocaleString()}주 ${cnt} — 순매도 우위.`;
+    } else {
+      value = "순변동 0주";
+      result = "NA";
+      comment = `최근 6개월 내부자 매수·매도 상쇄(순변동 0) ${cnt} — 방향성 불명확.`;
+    }
+  } else {
+    comment = "최근 6개월 임원·주요주주 소유보고 없음 또는 미수집.";
+  }
+
+  return {
+    key: "INSIDER_TRADING",
+    label: METRIC_LABELS.INSIDER_TRADING,
+    value,
+    numericValue,
+    lynchCriterion: METRIC_CRITERIA.INSIDER_TRADING,
+    result,
+    comment,
+    source: value != null ? "DART elestock (임원·주요주주 소유보고, 6M)" : UNAVAILABLE,
+  };
+}
+
+// #7 자사주 매입 추이 — tesstkAcqsDspsSttus 연도별 보통주 취득/처분/보유(주) 시계열.
+// 최신연도 순매입(취득−처분)과 다년 보유수량 방향으로 판정. 데이터 없으면 NA.
+// series: 최신순 정렬된 {period, acqs, dsps, held}.
+function computeBuybackTrend(
+  series: { period: string; acqs: number | null; dsps: number | null; held: number | null }[],
+): LynchMetric {
+  let value: string | null = null;
+  let numericValue: number | null = null;
+  let result: LynchMetric["result"] = "NA";
+  let comment: string;
+
+  // 취득/처분/보유 중 하나라도 값이 있는 연도만 유효
+  const valid = series.filter(
+    (s) => s.acqs != null || s.dsps != null || s.held != null,
+  );
+
+  if (valid.length >= 1) {
+    const latest = valid[0]; // 최신 (desc)
+    const acqs = latest.acqs ?? 0;
+    const dsps = latest.dsps ?? 0;
+    const net = acqs - dsps; // 당기 순취득
+    numericValue = net;
+
+    // 다년 보유수량 방향 (가장 오래된 유효 held 대비)
+    const heldSeries = valid.filter((s) => s.held != null) as { period: string; held: number }[];
+    let heldTrend = "";
+    if (heldSeries.length >= 2) {
+      const hLatest = heldSeries[0];
+      const hOldest = heldSeries[heldSeries.length - 1];
+      const dir = hLatest.held > hOldest.held ? "증가" : hLatest.held < hOldest.held ? "감소" : "유지";
+      heldTrend = ` 보유 ${hOldest.period} ${hOldest.held.toLocaleString()}주 → ${hLatest.period} ${hLatest.held.toLocaleString()}주(${dir}).`;
+    } else if (latest.held != null) {
+      heldTrend = ` 기말 보유 ${latest.held.toLocaleString()}주.`;
+    }
+
+    if (net > 0) {
+      value = `순취득 +${net.toLocaleString()}주`;
+      result = "PASS";
+      comment = `${latest.period} 자사주 순취득 ${net.toLocaleString()}주(취득 ${acqs.toLocaleString()}/처분 ${dsps.toLocaleString()}) — 매입 진행(린치 호재).${heldTrend}`;
+    } else if (net < 0) {
+      value = `순처분 ${net.toLocaleString()}주`;
+      result = "FAIL";
+      comment = `${latest.period} 자사주 순처분 ${Math.abs(net).toLocaleString()}주 — 처분 우위.${heldTrend}`;
+    } else {
+      value = "변동 없음";
+      result = "NA";
+      comment = `${latest.period} 자사주 취득·처분 없음(또는 상쇄).${heldTrend}`;
+    }
+  } else {
+    comment = "자사주 취득·처분 공시 데이터 없음 또는 미수집.";
+  }
+
+  return {
+    key: "BUYBACK_TREND",
+    label: METRIC_LABELS.BUYBACK_TREND,
+    value,
+    numericValue,
+    lynchCriterion: METRIC_CRITERIA.BUYBACK_TREND,
+    result,
+    comment,
+    source: value != null ? "DART tesstkAcqsDspsSttus (자기주식 현황)" : UNAVAILABLE,
+  };
+}
+
 // GAP 지표 — 항상 "확인 불가" 메트릭 생성
 function gapMetric(key: LynchMetricKey, reason: string): LynchMetric {
   return {
@@ -383,9 +494,10 @@ function gapMetric(key: LynchMetricKey, reason: string): LynchMetric {
   };
 }
 
+// 안전 폴백 — 정상 경로에선 모든 지표가 computedByKey로 채워져 사용되지 않음.
 const GAP_REASONS: Record<string, string> = {
-  INSIDER_TRADING: "내부자 거래 소스 없음 — 확인 불가(Phase 3 예정).",
-  BUYBACK_TREND: "자사주 매입 소스 없음 — 확인 불가(Phase 3 예정).",
+  INSIDER_TRADING: "내부자 소유보고 미수집 — 확인 불가.",
+  BUYBACK_TREND: "자사주 공시 미수집 — 확인 불가.",
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -436,6 +548,19 @@ async function buildStockContext(ticker: string): Promise<
     fin?.opGrowth ?? null,
   );
 
+  // #6 내부자 매수 vs 매도 (6M) — Stock의 elestock 집계 (시점성)
+  const insiderTrading = computeInsiderTrading(
+    stock.insiderNetBuy6m ?? null,
+    stock.insiderBuyCount ?? null,
+    stock.insiderSellCount ?? null,
+    stock.insiderAsOf ?? null,
+  );
+
+  // #7 자사주 매입 추이 — 연간 시계열 자사주 취득/처분/보유 (최신순)
+  const buybackTrend = computeBuybackTrend(
+    annualSeries.map((f) => ({ period: f.period, acqs: f.treasuryAcqs, dsps: f.treasuryDsps, held: f.treasuryHeld })),
+  );
+
   const market = (stock.market === "KOSDAQ" ? "KOSDAQ" : "KOSPI") as "KOSPI" | "KOSDAQ";
 
   // LLM 주입용 사실 — 코드가 산출한 수치만 '사실'로 전달
@@ -465,15 +590,19 @@ async function buildStockContext(ticker: string): Promise<
     `현금/시총 = ${cashToMcap.value ?? "확인 불가"} (${cashToMcap.comment})`,
     `EPS 3년 CAGR = ${epsCagr3y.value ?? "확인 불가"} (${epsCagr3y.comment})`,
     `영업이익률 추이 = ${opMarginTrend.value ?? "확인 불가"} (${opMarginTrend.comment})`,
+    `내부자 매수vs매도(6M) = ${insiderTrading.value ?? "확인 불가"} (${insiderTrading.comment})`,
+    `자사주 매입 추이 = ${buybackTrend.value ?? "확인 불가"} (${buybackTrend.comment})`,
     "",
-    "[확인 불가 지표 — 반드시 '공시에서 확인 불가'로 처리하고 숫자를 지어내지 마라]",
-    `- 항상 확인 불가: 내부자 매수·매도, 자사주 매입 추이`,
+    "[확인 불가 항목 — 반드시 '공시에서 확인 불가'로 처리하고 숫자를 지어내지 마라]",
+    `- 기관 보유율(5% 미만 여부)은 DART 미제공 — 그린플래그에서 NA 처리.`,
     ...(() => {
       // 데이터 결측으로 산출 불가한 지표만 추가 경고 (값이 있으면 LLM이 그대로 사용)
       const naComputed = [
         debtToEquity.value == null ? "Debt-to-Equity" : null,
         cashToMcap.value == null ? "현금/시총" : null,
         epsCagr3y.value == null ? "EPS 3년 CAGR" : null,
+        insiderTrading.value == null ? "내부자 매수·매도" : null,
+        buybackTrend.value == null ? "자사주 매입 추이" : null,
       ].filter((s): s is string => s != null);
       return naComputed.length > 0 ? [`- 이번 종목은 데이터 결측으로 확인 불가: ${naComputed.join(", ")}`] : [];
     })(),
@@ -489,7 +618,7 @@ async function buildStockContext(ticker: string): Promise<
       snapshotDate: snapshot.date,
       financialPeriod: fin?.period ?? null,
       facts,
-      computed: { peg, debtToEquity, cashToMcap, epsCagr3y, opMarginTrend },
+      computed: { peg, debtToEquity, cashToMcap, epsCagr3y, opMarginTrend, insiderTrading, buybackTrend },
     },
   };
 }
@@ -529,7 +658,7 @@ ${ctx.facts}
     "howItMakesMoney": "어떻게 돈을 버는가 (50자 이내)",
     "biggestRisk": "무엇이 망가지면 무너지는가 (50자 이내)"
   },
-  "checklistComments": { "PEG": "한 줄 코멘트", "DEBT_TO_EQUITY": "한 줄 코멘트", "CASH_TO_MCAP": "한 줄 코멘트", "EPS_CAGR_3Y": "한 줄 코멘트", "OP_MARGIN_TREND": "한 줄 코멘트" },
+  "checklistComments": { "PEG": "한 줄 코멘트", "DEBT_TO_EQUITY": "한 줄 코멘트", "CASH_TO_MCAP": "한 줄 코멘트", "EPS_CAGR_3Y": "한 줄 코멘트", "OP_MARGIN_TREND": "한 줄 코멘트", "INSIDER_TRADING": "한 줄 코멘트", "BUYBACK_TREND": "한 줄 코멘트" },
   "greenFlags": [
     {"label": "이름/발음이 지루한가", "result": "PASS|FAIL|NA", "comment": "한 줄"},
     {"label": "사업이 따분·혐오스러운가", "result": "PASS|FAIL|NA", "comment": "한 줄"},
@@ -550,8 +679,8 @@ ${ctx.facts}
 }
 
 주의:
-- 내부자/자사주/기관보유율 관련 항목은 데이터 소스가 없으므로 result는 "NA", comment는 "공시에서 확인 불가" 취지로 적어라. 숫자를 추정하지 마라.
-- 부채비율(D/E)·현금/시총·EPS 3년 CAGR·영업이익률 추이는 위 '코드가 계산한 핵심 지표'에 값이 있으면 그 값을 사실로 받아들이고, "확인 불가"로 표시된 경우에만 NA로 처리하라. checklistComments에는 해당 지표에 대한 해석 코멘트만 한 줄로 적어라(숫자 재계산 금지).
+- '기관 보유율이 낮은가(5% 미만)' 그린플래그는 DART 미제공이므로 result는 "NA", comment는 "공시에서 확인 불가" 취지로 적어라. 숫자를 추정하지 마라.
+- 부채비율(D/E)·현금/시총·EPS 3년 CAGR·영업이익률 추이·내부자 매수vs매도·자사주 매입 추이는 위 '코드가 계산한 핵심 지표'에 값이 있으면 그 값을 사실로 받아들이고, "확인 불가"로 표시된 경우에만 NA로 처리하라. checklistComments에는 해당 지표에 대한 해석 코멘트만 한 줄로 적어라(숫자 재계산 금지). 내부자/자사주 그린플래그는 코드 산출값으로 동기화되니 일관되게 적어라.
 - greenFlags는 정확히 6개, redFlags는 정확히 5개, categories는 1~2개.
 - 모든 텍스트는 한국어. 재무용어 영어 병기 허용.`;
 }
@@ -647,6 +776,8 @@ function buildResult(ctx: StockContext, raw: LlmRaw): LynchResult {
     CASH_TO_MCAP: ctx.computed.cashToMcap,
     EPS_CAGR_3Y: ctx.computed.epsCagr3y,
     OP_MARGIN_TREND: ctx.computed.opMarginTrend,
+    INSIDER_TRADING: ctx.computed.insiderTrading,
+    BUYBACK_TREND: ctx.computed.buybackTrend,
   };
   const checklist: LynchMetric[] = METRIC_ORDER.map((key) => {
     const computed = computedByKey[key];
@@ -668,7 +799,7 @@ function buildResult(ctx: StockContext, raw: LlmRaw): LynchResult {
     biggestRisk: nonEmpty(raw.twoMinuteDrill?.biggestRisk, "(확인 불가)"),
   };
 
-  // ④ flags — 고정 개수 보정. GAP에 해당하는 플래그(내부자/자사주/기관보유율)는 NA 강제.
+  // ④ flags — 고정 개수 보정.
   const greenFlags = normalizeFlags(raw.greenFlags, 6, [
     "이름/발음이 지루한가",
     "사업이 따분·혐오스러운가",
@@ -677,8 +808,11 @@ function buildResult(ctx: StockContext, raw: LlmRaw): LynchResult {
     "내부자가 자기 돈으로 사는가",
     "자사주 매입 중인가",
   ]);
-  // 내부자(4번 idx)·자사주(5번 idx)·기관보유율(3번 idx)은 소스 없음 → NA 강제
-  forceNa(greenFlags, [3, 4, 5], "관련 데이터 미수집 — 공시에서 확인 불가.");
+  // 기관보유율(3번 idx)은 DART 미제공 → NA 강제(영구 GAP).
+  forceNa(greenFlags, [3], "기관 보유율 데이터 미제공(DART) — 공시에서 확인 불가.");
+  // 내부자(4)·자사주(5) 플래그는 Phase 3 코드 산출값으로 동기화(체크리스트 #6·#7과 일치).
+  syncFlagFromMetric(greenFlags, 4, ctx.computed.insiderTrading);
+  syncFlagFromMetric(greenFlags, 5, ctx.computed.buybackTrend);
 
   const redFlags = normalizeFlags(raw.redFlags, 5, [
     "'다음 OO'로 불리는가",
@@ -703,7 +837,7 @@ function buildResult(ctx: StockContext, raw: LlmRaw): LynchResult {
   const validation = {
     weakestAssumption: nonEmpty(
       raw.validation?.weakestAssumption,
-      "GAP 지표(부채비율·현금·내부자·자사주) 미반영 — 안전성/수급 판단이 가장 약한 가정.",
+      "기관 보유율(DART 미제공) 미반영 — 수급(언더더레이더 여부) 판단이 가장 약한 가정.",
     ),
     sources: [
       nonEmpty(srcArr[0], "최근 사업보고서/감사보고서 (DART)"),
@@ -741,11 +875,32 @@ function forceNa(flags: LynchFlag[], indices: number[], comment: string): void {
   }
 }
 
+// 코드가 산출한 체크리스트 지표의 result/comment로 해당 그린플래그를 덮어쓴다
+// (LLM 추정 대신 공시 기반 사실로 동기화 — 내부자/자사주).
+function syncFlagFromMetric(flags: LynchFlag[], idx: number, metric: LynchMetric): void {
+  if (!flags[idx]) return;
+  flags[idx].result = metric.result;
+  flags[idx].comment = metric.comment;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 메인 진입점: 분석 실행 + DB 영속화 (status pending→done/failed)
 // 라우트가 이미 pending row 를 만든 뒤 호출. analysisId 로 갱신.
 // ─────────────────────────────────────────────────────────────────────────────
 export async function runLynchAnalysis(analysisId: string, ticker: string): Promise<void> {
+  // 최상위 가드 — buildStockContext의 DB 조회 등에서 예외가 나도 pending 고착되지 않도록
+  // 반드시 failed로 마감한다(예: 마이그레이션 미적용으로 컬럼 부재 시).
+  try {
+    await runLynchAnalysisInner(analysisId, ticker);
+  } catch (e) {
+    await prisma.lynchAnalysis.update({
+      where: { id: analysisId },
+      data: { status: "failed", error: e instanceof Error ? e.message.slice(0, 300) : "분석 실패(내부 오류)" },
+    }).catch(() => {});
+  }
+}
+
+async function runLynchAnalysisInner(analysisId: string, ticker: string): Promise<void> {
   const built = await buildStockContext(ticker);
   if (!built.ok) {
     // 데이터 결격 — failed 로 기록 (라우트에서 사전 검증하지만 방어적으로 처리)
