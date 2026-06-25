@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { LYNCH_MODELS, DEFAULT_LYNCH_MODEL } from "@/lib/lynch-models";
 
 interface StockSuggestion {
   id: string;   // 6자리 종목코드
@@ -12,11 +13,18 @@ interface StockSuggestion {
 interface Props {
   onSubmit: (ticker: string) => void;
   disabled?: boolean;
+  selectedModel?: string;
+  onModelChange?: (modelId: string) => void;
 }
 
 const TICKER_RE = /^\d{6}$/;
 
-export default function LynchTickerInput({ onSubmit, disabled = false }: Props) {
+export default function LynchTickerInput({
+  onSubmit,
+  disabled = false,
+  selectedModel = DEFAULT_LYNCH_MODEL.id,
+  onModelChange,
+}: Props) {
   const [value,        setValue]        = useState("");
   const [suggestions,  setSuggestions]  = useState<StockSuggestion[]>([]);
   const [universe,     setUniverse]     = useState<StockSuggestion[]>([]);
@@ -164,6 +172,31 @@ export default function LynchTickerInput({ onSubmit, disabled = false }: Props) 
   return (
     <form onSubmit={handleSubmit} noValidate>
       <div ref={containerRef} className="relative">
+        {/* 모델 선택 */}
+        {onModelChange && (
+          <div className="flex items-center gap-2 mb-2">
+            <label
+              htmlFor="lynch-model-select"
+              className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0"
+            >
+              분석 모델
+            </label>
+            <select
+              id="lynch-model-select"
+              value={selectedModel}
+              onChange={(e) => onModelChange(e.target.value)}
+              disabled={disabled}
+              className="flex-1 sm:flex-none sm:w-auto px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="피터 린치 분석에 사용할 AI 모델 선택"
+            >
+              {LYNCH_MODELS.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="flex gap-2">
           {/* 종목코드 입력 */}
           <div className="flex-1 relative">

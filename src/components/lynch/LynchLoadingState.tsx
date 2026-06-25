@@ -10,10 +10,18 @@ const STEPS = [
 interface Props {
   step?: number; // 0-based, 0~3
   elapsed?: number; // seconds
+  progress?: number; // 0~1, 실제 경과 기반 연속 진행률. 주면 바 너비를 이 값으로 그린다.
 }
 
-export default function LynchLoadingState({ step = 0, elapsed = 0 }: Props) {
+export default function LynchLoadingState({ step = 0, elapsed = 0, progress }: Props) {
   const currentStep = Math.min(step, STEPS.length - 1);
+  // 바 너비: 연속 진행률(progress)이 오면 그 값을, 없으면 스텝 기반으로 폴백.
+  // progress 는 완료(done) 전까지 100%에 도달하지 않게 호출부에서 점근 처리한다 —
+  // "저장 중 100%"인데 실제론 AI가 도는 동기 불일치를 막기 위함.
+  const barPct =
+    progress != null
+      ? Math.round(Math.max(0, Math.min(1, progress)) * 100)
+      : Math.round(((currentStep + 1) / STEPS.length) * 100);
 
   return (
     <div
@@ -36,8 +44,8 @@ export default function LynchLoadingState({ step = 0, elapsed = 0 }: Props) {
         {/* 진행 바 */}
         <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden" aria-hidden="true">
           <div
-            className="h-full bg-blue-400 rounded-full transition-all duration-500"
-            style={{ width: `${((currentStep + 1) / STEPS.length) * 100}%` }}
+            className="h-full bg-blue-400 rounded-full transition-all duration-700 ease-out"
+            style={{ width: `${barPct}%` }}
           />
         </div>
 

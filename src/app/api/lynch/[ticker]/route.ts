@@ -6,6 +6,7 @@ import {
   resolveStockMeta,
   LYNCH_DATA_LIMITATIONS,
 } from "@/lib/lynch-analyzer";
+import { resolveLynchModel } from "@/lib/lynch-models";
 import type { LynchResponse, LynchResult } from "@/lib/lynch-types";
 
 export const maxDuration = 60;
@@ -95,7 +96,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tic
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST — 분석 트리거 (캐시 히트 즉시 반환 / 없으면 pending 생성 후 백그라운드 실행)
-// body: { force?: boolean }
+// body: { force?: boolean, model?: string }  (model 은 query ?model= 도 허용)
+//   model: 모델 allowlist(LYNCH_MODELS)의 id. 없거나 무효면 기본(haiku)으로 폴백.
+// 캐시 키는 [ticker, snapshotDate] 단일 행이지만, 재사용(캐시 히트) 판정에는 model 을
+// 포함한다 — 같은 종목·스냅샷이라도 요청 모델이 직전 분석 모델과 다르면 재실행한다
+// (다른 모델 캐시가 반환되는 버그 방지). DB unique 제약은 변경하지 않음(마이그레이션 불필요).
 // ─────────────────────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest, { params }: { params: Promise<{ ticker: string }> }) {
   const session = await auth();
@@ -105,8 +110,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tic
   const invalid = validateTicker(ticker);
   if (invalid) return invalid;
 
-  const body = (await req.json().catch(() => ({}))) as { force?: boolean };
+  const body = (await req.json().catch(() => ({}))) as { force?: boolean; model?: string };
   const force = body.force === true;
+  // model: body 우선, 없으면 query(?model=). allowlist 검증 + 무효 시 기본 폴백.
+  const requestedModelId = body.model ?? req.nextUrl.searchParams.get("model") ?? null;
+  const model = resolveLynchModel(requestedModelId);
 
   const meta = await resolveStockMeta(ticker);
   if (!meta.ok) return NextResponse.json({ error: meta.message }, { status: meta.code });
@@ -114,31 +122,35 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tic
   const key = { ticker_snapshotDate: { ticker, snapshotDate: meta.snapshotDate } };
   const existing = await prisma.lynchAnalysis.findUnique({
     where: key,
-    select: { id: true, status: true, result: true, generatedAt: true, error: true, updatedAt: true },
+    select: { id: true, status: true, result: true, generatedAt: true, error: true, updatedAt: true, model: true },
   });
 
-  // 캐시 히트: done 이고 force 아니면 즉시 반환
-  if (existing?.status === "done" && !force) {
+  // 캐시 히트: done 이고 force 아니고 '같은 모델'로 생성된 결과면 즉시 반환.
+  // 모델이 다르면 캐시 미스로 간주 → 아래에서 재실행(행 덮어쓰기).
+  if (existing?.status === "done" && !force && existing.model === model.id) {
     return NextResponse.json(toResponse(meta, ticker, existing));
   }
 
-  // 인플라이트 락: pending 이고 3분 이내면 중복 트리거 무시 (현 상태 반환)
+  // 인플라이트 락: pending 이고 3분 이내면 중복 트리거 무시 (현 상태 반환).
+  // 모델 무관 — 동일 종목·스냅샷에 대한 동시 분석은 1건만 진행시킨다.
   if (existing?.status === "pending" && Date.now() - existing.updatedAt.getTime() < INFLIGHT_MS) {
     return NextResponse.json(toResponse(meta, ticker, existing));
   }
 
-  // pending 으로 upsert (신규 또는 failed/stale 재시작)
+  // pending 으로 upsert (신규 또는 failed/stale/다른모델 재시작). 선택 모델을 기록.
   const row = await prisma.lynchAnalysis.upsert({
     where: key,
     create: {
       ticker,
       snapshotDate: meta.snapshotDate,
       status: "pending",
+      model: model.id,
     },
     update: {
       status: "pending",
       result: null,
       error: null,
+      model: model.id,
     },
     select: { id: true },
   });
@@ -147,7 +159,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tic
   // after(): 응답 반환 후에도 Vercel 이 태스크 완료를 보장한다. void fire-and-forget 은
   // 응답 직후 Lambda 가 freeze 되면 분석이 중단돼 DB 가 pending 으로 영구 고착될 수 있다.
   after(() =>
-    runLynchAnalysis(row.id, ticker).catch(() => {
+    runLynchAnalysis(row.id, ticker, model.id).catch(() => {
       /* runLynchAnalysis 내부에서 failed 기록 — 여기선 무시 */
     }),
   );

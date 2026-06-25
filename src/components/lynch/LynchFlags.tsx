@@ -5,7 +5,7 @@ interface Props {
   redFlags: LynchFlag[];
 }
 
-function FlagIcon({ result }: { result: "PASS" | "FAIL" | "NA" }) {
+function FlagIcon({ result }: { result: LynchFlag["result"] }) {
   if (result === "PASS") {
     return (
       <span
@@ -23,6 +23,17 @@ function FlagIcon({ result }: { result: "PASS" | "FAIL" | "NA" }) {
         aria-label="부정 신호"
       >
         ✗
+      </span>
+    );
+  }
+  if (result === "CAUTION") {
+    return (
+      <span
+        className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-50 text-amber-600 text-xs font-bold flex-shrink-0 ring-1 ring-amber-300"
+        aria-label="주의 신호 (중간 구간)"
+        title="주의 — 린치 기준 중간 구간"
+      >
+        ≈
       </span>
     );
   }
@@ -44,6 +55,8 @@ function FlagItem({ flag }: { flag: LynchFlag }) {
           ? "bg-emerald-50 border-emerald-100"
           : flag.result === "FAIL"
           ? "bg-red-50 border-red-100"
+          : flag.result === "CAUTION"
+          ? "bg-amber-50 border-amber-200"
           : "bg-gray-50 border-gray-200"
       }`}
     >
@@ -55,6 +68,8 @@ function FlagItem({ flag }: { flag: LynchFlag }) {
               ? "text-emerald-800"
               : flag.result === "FAIL"
               ? "text-red-800"
+              : flag.result === "CAUTION"
+              ? "text-amber-800"
               : "text-gray-500"
           }`}
         >

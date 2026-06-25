@@ -4,7 +4,7 @@ interface Props {
   metrics: LynchMetric[];
 }
 
-function ResultIcon({ result }: { result: "PASS" | "FAIL" | "NA" }) {
+function ResultIcon({ result }: { result: LynchMetric["result"] }) {
   if (result === "PASS") {
     return (
       <span
@@ -27,6 +27,17 @@ function ResultIcon({ result }: { result: "PASS" | "FAIL" | "NA" }) {
       </span>
     );
   }
+  if (result === "CAUTION") {
+    return (
+      <span
+        className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-50 text-amber-600 text-sm font-bold ring-1 ring-amber-300"
+        aria-label="주의 (중간 구간)"
+        title="주의 — 린치 기준 중간 구간"
+      >
+        ≈
+      </span>
+    );
+  }
   return (
     <span
       className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 text-gray-400 text-xs font-bold"
@@ -46,8 +57,27 @@ export default function LynchChecklist({ metrics }: Props) {
           7개 핵심지표 체크리스트
         </h3>
         <p className="text-xs text-gray-400 mt-0.5">
-          피터 린치 기준 정량 평가 — 확인 불가 항목은 공시 부재로 Phase 2 보강 예정
+          피터 린치 기준 정량 평가 — 확인 불가 항목은 공시 부재
         </p>
+        {/* 범례 */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2">
+          <span className="inline-flex items-center gap-1 text-[11px] text-gray-500">
+            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">✓</span>
+            통과
+          </span>
+          <span className="inline-flex items-center gap-1 text-[11px] text-gray-500">
+            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold ring-1 ring-amber-300">≈</span>
+            주의 (중간 구간)
+          </span>
+          <span className="inline-flex items-center gap-1 text-[11px] text-gray-500">
+            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-600 text-[10px] font-bold">✗</span>
+            미달
+          </span>
+          <span className="inline-flex items-center gap-1 text-[11px] text-gray-500">
+            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-gray-100 text-gray-400 text-[8px] font-bold">N/A</span>
+            확인 불가
+          </span>
+        </div>
       </div>
 
       {/* 모바일 가로 스크롤 래퍼 */}

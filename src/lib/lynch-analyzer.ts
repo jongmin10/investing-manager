@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import { LYNCH_POLICY } from "./lynch-policy";
+import { resolveLynchModel, type LynchModelOption } from "./lynch-models";
 import type {
   LynchResult,
   LynchMetric,
@@ -34,7 +35,7 @@ const METRIC_LABELS: Record<LynchMetricKey, string> = {
 
 const METRIC_CRITERIA: Record<LynchMetricKey, string> = {
   PEG: "< 1.0 이상적, > 2.0 위험",
-  DEBT_TO_EQUITY: "< 0.5 양호",
+  DEBT_TO_EQUITY: "< 0.5 양호 / 0.5~1.0 주의 / > 1.0 위험",
   CASH_TO_MCAP: "클수록 안전마진",
   EPS_CAGR_3Y: "카테고리별 다름",
   OP_MARGIN_TREND: "개선 추세인가",
@@ -115,8 +116,8 @@ function computePeg(per: number | null, growthPct: number | null): LynchMetric {
       result = "FAIL";
       comment = `PEG ${numericValue} — 2.0 초과, 린치 기준 위험 구간(성장 대비 고평가).`;
     } else {
-      result = "FAIL";
-      comment = `PEG ${numericValue} — 1.0~2.0 구간, 이상적(<1.0) 아님.`;
+      result = "CAUTION";
+      comment = `PEG ${numericValue} — 주의: 1.0~2.0 구간, 성장 대비 다소 부담(이상적<1.0 아님, 위험>2.0 아님).`;
     }
   } else if (per != null && per > 0 && growthPct != null && growthPct <= 0) {
     comment = `이익성장률 ${growthPct?.toFixed(1)}%(0 이하)로 PEG 산출 불가 — 역성장 구간(추정).`;
@@ -166,9 +167,14 @@ function computeDebtToEquity(totalDebt: number | null, totalEquity: number | nul
     } else if (de < 0.5) {
       result = "PASS";
       comment = `부채총계/자본총계 = ${numericValue} — 0.5 미만, 린치 기준 재무 양호.`;
+    } else if (de <= 1.0) {
+      // 린치는 <0.5 만 명시. 0.5~1.0 은 '양호는 아니나 부채<자본'인 중간 구간 → CAUTION.
+      result = "CAUTION";
+      comment = `부채총계/자본총계 = ${numericValue} — 주의: 0.5~1.0 구간(양호 기준<0.5 초과, 다만 부채<자본). 부채 부담 점검 필요.`;
     } else {
+      // 부채가 자본을 초과(D/E>1.0) — 레버리지 부담 본격화 → FAIL.
       result = "FAIL";
-      comment = `부채총계/자본총계 = ${numericValue} — 0.5 이상, 부채 부담 유의.`;
+      comment = `부채총계/자본총계 = ${numericValue} — 1.0 초과(부채>자본), 부채 부담 유의.`;
     }
   } else if (totalEquity != null && totalEquity <= 0) {
     comment = `자본총계 ${totalEquity}억원(0 이하) — 자본잠식 가능성, D/E 산출 불가.`;
@@ -253,12 +259,14 @@ function computeEpsCagr3y(series: { period: string; eps: number | null }[]): Lyn
         numericValue = parseFloat(cagr.toFixed(1));
         value = `${numericValue}%`;
         // 린치: 카테고리별 다르나, 일반적으로 꾸준한 두 자릿수 성장을 긍정.
-        if (cagr >= 15) {
+        // 판정은 표시값(numericValue, 소수1자리 반올림)으로 비교 — raw float 오차로
+        // "15.0% 인데 CAUTION" 같은 표시/판정 모순을 방지(예: 100→115 CAGR=14.999…).
+        if (numericValue >= 15) {
           result = "PASS";
           comment = `EPS ${oldest.period}→${latest.period} ${years}년 CAGR ${numericValue}% — 두 자릿수 성장, 양호.`;
-        } else if (cagr >= 0) {
-          result = "FAIL";
-          comment = `EPS ${years}년 CAGR ${numericValue}% — 성장은 하나 둔(15% 미만).`;
+        } else if (numericValue >= 0) {
+          result = "CAUTION";
+          comment = `EPS ${years}년 CAGR ${numericValue}% — 주의: 성장은 하나 둔화(15% 미만), 고성장 기준 미달.`;
         } else {
           result = "FAIL";
           comment = `EPS ${years}년 CAGR ${numericValue}% — 역성장.`;
@@ -312,8 +320,8 @@ function computeOpMarginTrendMulti(
       result = "FAIL";
       comment = `영업이익률 ${oldest.period} ${oldest.opMargin.toFixed(1)}% → ${latest.period} ${numericValue}% (${delta.toFixed(1)}%p) — 둔화 추세.`;
     } else {
-      result = "FAIL";
-      comment = `영업이익률 ${oldest.period} ${oldest.opMargin.toFixed(1)}% → ${latest.period} ${numericValue}% — 보합(뚜렷한 개선 아님).`;
+      result = "CAUTION";
+      comment = `영업이익률 ${oldest.period} ${oldest.opMargin.toFixed(1)}% → ${latest.period} ${numericValue}% (${delta >= 0 ? "+" : ""}${delta.toFixed(1)}%p) — 주의: 보합(±0.5%p 이내, 뚜렷한 개선 아님).`;
     }
     return {
       key: "OP_MARGIN_TREND",
@@ -346,6 +354,9 @@ function computeOpMarginTrend(opMargin: number | null, opGrowth: number | null, 
       if (opGrowth > 0) {
         result = "PASS";
         comment = `당년 영업이익률 ${numericValue}%, 영업이익 YoY +${opGrowth.toFixed(1)}% — 개선 방향(단년 근사, 추이는 다년 필요).`;
+      } else if (opGrowth === 0) {
+        result = "CAUTION";
+        comment = `당년 영업이익률 ${numericValue}%, 영업이익 YoY 0% — 주의: 보합(단년 근사, 뚜렷한 개선 아님).`;
       } else {
         result = "FAIL";
         comment = `당년 영업이익률 ${numericValue}%, 영업이익 YoY ${opGrowth.toFixed(1)}% — 둔화 방향(단년 근사).`;
@@ -625,8 +636,9 @@ async function buildStockContext(ticker: string): Promise<
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LLM 호출 (report-generator.ts 패턴 재사용 — 키 없으면 graceful)
+// 모델은 호출부가 전달(allowlist 의 LynchModelOption). 하드코딩 제거 — 기본값은
+// resolveLynchModel(null) = allowlist default(claude-haiku-4-5).
 // ─────────────────────────────────────────────────────────────────────────────
-const LLM_MODEL = "google/gemini-2.5-flash";
 
 interface LlmRaw {
   categories?: { type?: string; weightPct?: number | null; rationale?: string }[];
@@ -660,37 +672,41 @@ ${ctx.facts}
   },
   "checklistComments": { "PEG": "한 줄 코멘트", "DEBT_TO_EQUITY": "한 줄 코멘트", "CASH_TO_MCAP": "한 줄 코멘트", "EPS_CAGR_3Y": "한 줄 코멘트", "OP_MARGIN_TREND": "한 줄 코멘트", "INSIDER_TRADING": "한 줄 코멘트", "BUYBACK_TREND": "한 줄 코멘트" },
   "greenFlags": [
-    {"label": "이름/발음이 지루한가", "result": "PASS|FAIL|NA", "comment": "한 줄"},
-    {"label": "사업이 따분·혐오스러운가", "result": "PASS|FAIL|NA", "comment": "한 줄"},
-    {"label": "분사(spin-off) 기업인가", "result": "PASS|FAIL|NA", "comment": "한 줄"},
-    {"label": "기관 보유율이 낮은가(5% 미만)", "result": "PASS|FAIL|NA", "comment": "한 줄"},
-    {"label": "내부자가 자기 돈으로 사는가", "result": "PASS|FAIL|NA", "comment": "한 줄"},
-    {"label": "자사주 매입 중인가", "result": "PASS|FAIL|NA", "comment": "한 줄"}
+    {"label": "이름/발음이 지루한가", "result": "PASS|FAIL|CAUTION|NA", "comment": "한 줄"},
+    {"label": "사업이 따분·혐오스러운가", "result": "PASS|FAIL|CAUTION|NA", "comment": "한 줄"},
+    {"label": "분사(spin-off) 기업인가", "result": "PASS|FAIL|CAUTION|NA", "comment": "한 줄"},
+    {"label": "기관 보유율이 낮은가(5% 미만)", "result": "PASS|FAIL|CAUTION|NA", "comment": "한 줄"},
+    {"label": "내부자가 자기 돈으로 사는가", "result": "PASS|FAIL|CAUTION|NA", "comment": "한 줄"},
+    {"label": "자사주 매입 중인가", "result": "PASS|FAIL|CAUTION|NA", "comment": "한 줄"}
   ],
   "redFlags": [
-    {"label": "'다음 OO'로 불리는가", "result": "PASS|FAIL|NA", "comment": "한 줄"},
-    {"label": "diworsification 흔적", "result": "PASS|FAIL|NA", "comment": "한 줄"},
-    {"label": "한 고객이 매출 25% 이상", "result": "PASS|FAIL|NA", "comment": "한 줄"},
-    {"label": "핫한 산업의 핫한 종목인가", "result": "PASS|FAIL|NA", "comment": "한 줄"},
-    {"label": "경영진이 거시 핑계를 대는가", "result": "PASS|FAIL|NA", "comment": "한 줄"}
+    {"label": "'다음 OO'로 불리는가", "result": "PASS|FAIL|CAUTION|NA", "comment": "한 줄"},
+    {"label": "diworsification 흔적", "result": "PASS|FAIL|CAUTION|NA", "comment": "한 줄"},
+    {"label": "한 고객이 매출 25% 이상", "result": "PASS|FAIL|CAUTION|NA", "comment": "한 줄"},
+    {"label": "핫한 산업의 핫한 종목인가", "result": "PASS|FAIL|CAUTION|NA", "comment": "한 줄"},
+    {"label": "경영진이 거시 핑계를 대는가", "result": "PASS|FAIL|CAUTION|NA", "comment": "한 줄"}
   ],
   "verdict": {"action": "BUY|HOLD|SELL", "rationale": "1~4단계 종합 사고흐름 (한 단락)"},
   "validation": {"weakestAssumption": "이 분석의 가장 약한 가정 (한 줄)", "sources": ["검증할 1차자료1", "검증할 1차자료2"]}
 }
 
 주의:
+- result 값은 PASS(통과)·FAIL(실패)·CAUTION(주의: 실패는 아니나 이상적도 아닌 중간 구간)·NA(확인 불가) 4종이다. 애매하게 부담스럽거나 보합/둔화 같은 중간 구간은 FAIL이 아니라 CAUTION으로 표시하라.
 - '기관 보유율이 낮은가(5% 미만)' 그린플래그는 DART 미제공이므로 result는 "NA", comment는 "공시에서 확인 불가" 취지로 적어라. 숫자를 추정하지 마라.
-- 부채비율(D/E)·현금/시총·EPS 3년 CAGR·영업이익률 추이·내부자 매수vs매도·자사주 매입 추이는 위 '코드가 계산한 핵심 지표'에 값이 있으면 그 값을 사실로 받아들이고, "확인 불가"로 표시된 경우에만 NA로 처리하라. checklistComments에는 해당 지표에 대한 해석 코멘트만 한 줄로 적어라(숫자 재계산 금지). 내부자/자사주 그린플래그는 코드 산출값으로 동기화되니 일관되게 적어라.
+- 부채비율(D/E)·현금/시총·EPS 3년 CAGR·영업이익률 추이·내부자 매수vs매도·자사주 매입 추이는 위 '코드가 계산한 핵심 지표'에 값이 있으면 그 값(PASS/FAIL/CAUTION/NA 포함)을 사실로 받아들이고, "확인 불가"로 표시된 경우에만 NA로 처리하라. checklistComments에는 해당 지표에 대한 해석 코멘트만 한 줄로 적어라(숫자·판정 재계산 금지 — CAUTION을 임의로 PASS/FAIL로 바꾸지 마라). 내부자/자사주 그린플래그는 코드 산출값으로 동기화되니 일관되게 적어라.
 - greenFlags는 정확히 6개, redFlags는 정확히 5개, categories는 1~2개.
 - 모든 텍스트는 한국어. 재무용어 영어 병기 허용.`;
 }
 
-async function callLlm(ctx: StockContext): Promise<LlmRaw | null> {
+// LLM 호출 결과 — 성공 시 raw, 실패 시 사용자에게 보일 명확한 사유.
+type LlmOutcome = { ok: true; raw: LlmRaw } | { ok: false; reason: string };
+
+async function callLlm(ctx: StockContext, model: LynchModelOption): Promise<LlmOutcome> {
   const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) return null; // 키 없으면 graceful
+  if (!apiKey) return { ok: false, reason: "OPENROUTER_API_KEY 미설정" }; // 키 없으면 graceful
 
   const body = JSON.stringify({
-    model: LLM_MODEL,
+    model: model.slug,
     messages: [
       {
         role: "system",
@@ -704,8 +720,19 @@ async function callLlm(ctx: StockContext): Promise<LlmRaw | null> {
     max_tokens: 2500,
   });
 
-  // JSON 추출 실패 시 1회 재시도
+  // 전체 LLM 단계 예산. route 의 maxDuration(60s) 안에서 끝내야 after() 태스크가
+  // 강제 종료돼 pending 으로 고착되는 것을 막는다. 2회 시도를 합쳐 이 예산을 넘지
+  // 않도록 매 시도의 timeout 을 '남은 예산'으로 설정한다(느린 모델·행 hang 방어).
+  const LLM_BUDGET_MS = 52_000;
+  const startedAt = Date.now();
+
+  // 마지막 실패 사유 — 폴백 메시지. 루프에서 더 구체적인 사유로 갱신한다.
+  let lastReason = "LLM 응답 파싱 실패 (타임아웃/형식 오류)";
+
+  // JSON 추출/일시 오류 시 재시도 — 단, 예산이 남아 있을 때만.
   for (let attempt = 0; attempt < 2; attempt++) {
+    const remaining = LLM_BUDGET_MS - (Date.now() - startedAt);
+    if (remaining < 5_000) break; // 남은 예산 부족 → 무의미한 재시도 포기
     try {
       const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -714,19 +741,37 @@ async function callLlm(ctx: StockContext): Promise<LlmRaw | null> {
           "Content-Type": "application/json",
         },
         body,
-        signal: AbortSignal.timeout(55_000),
+        signal: AbortSignal.timeout(remaining),
       });
-      if (!res.ok) continue;
+      if (!res.ok) {
+        // 402(크레딧 부족)·401(인증)은 재시도해도 동일 → 명확한 사유로 즉시 종료.
+        if (res.status === 402) {
+          return {
+            ok: false,
+            reason: `OpenRouter 크레딧 부족 — '${model.label}' 모델은 현재 잔액으로 사용할 수 없습니다. 크레딧을 충전하거나 더 저렴한 모델(기본 Haiku 등)을 선택하세요.`,
+          };
+        }
+        if (res.status === 401) {
+          return { ok: false, reason: "OpenRouter 인증 실패 — API 키를 확인하세요." };
+        }
+        // 5xx·기타는 일시 오류일 수 있어 재시도.
+        lastReason = `LLM 호출 실패 (HTTP ${res.status}).`;
+        continue;
+      }
       const json = await res.json();
       const text: string = json.choices?.[0]?.message?.content ?? "";
       const match = text.match(/\{[\s\S]*\}/);
-      if (!match) continue;
-      return JSON.parse(match[0]) as LlmRaw;
+      if (!match) {
+        lastReason = "LLM 응답에서 JSON을 추출하지 못함 (응답 잘림/형식 오류).";
+        continue;
+      }
+      return { ok: true, raw: JSON.parse(match[0]) as LlmRaw };
     } catch {
       // 타임아웃/파싱 오류 → 재시도
+      lastReason = "LLM 응답 파싱 실패 (타임아웃/형식 오류).";
     }
   }
-  return null;
+  return { ok: false, reason: lastReason };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -740,7 +785,7 @@ function coerceCategory(t: string | undefined): SixCategory | null {
 
 function coerceFlagResult(r: string | undefined): LynchFlag["result"] {
   const up = (r ?? "").toUpperCase().trim();
-  if (up === "PASS" || up === "FAIL" || up === "NA") return up;
+  if (up === "PASS" || up === "FAIL" || up === "CAUTION" || up === "NA") return up;
   return "NA";
 }
 
@@ -887,11 +932,13 @@ function syncFlagFromMetric(flags: LynchFlag[], idx: number, metric: LynchMetric
 // 메인 진입점: 분석 실행 + DB 영속화 (status pending→done/failed)
 // 라우트가 이미 pending row 를 만든 뒤 호출. analysisId 로 갱신.
 // ─────────────────────────────────────────────────────────────────────────────
-export async function runLynchAnalysis(analysisId: string, ticker: string): Promise<void> {
+// modelId: allowlist(LYNCH_MODELS)의 id. 없거나 무효면 기본(haiku)으로 폴백.
+export async function runLynchAnalysis(analysisId: string, ticker: string, modelId?: string | null): Promise<void> {
+  const model = resolveLynchModel(modelId);
   // 최상위 가드 — buildStockContext의 DB 조회 등에서 예외가 나도 pending 고착되지 않도록
   // 반드시 failed로 마감한다(예: 마이그레이션 미적용으로 컬럼 부재 시).
   try {
-    await runLynchAnalysisInner(analysisId, ticker);
+    await runLynchAnalysisInner(analysisId, ticker, model);
   } catch (e) {
     await prisma.lynchAnalysis.update({
       where: { id: analysisId },
@@ -900,7 +947,7 @@ export async function runLynchAnalysis(analysisId: string, ticker: string): Prom
   }
 }
 
-async function runLynchAnalysisInner(analysisId: string, ticker: string): Promise<void> {
+async function runLynchAnalysisInner(analysisId: string, ticker: string, model: LynchModelOption): Promise<void> {
   const built = await buildStockContext(ticker);
   if (!built.ok) {
     // 데이터 결격 — failed 로 기록 (라우트에서 사전 검증하지만 방어적으로 처리)
@@ -913,24 +960,22 @@ async function runLynchAnalysisInner(analysisId: string, ticker: string): Promis
 
   const { ctx } = built;
   try {
-    const raw = await callLlm(ctx);
-    if (!raw) {
+    const outcome = await callLlm(ctx, model);
+    if (!outcome.ok) {
       await prisma.lynchAnalysis.update({
         where: { id: analysisId },
         data: {
           status: "failed",
-          error: process.env.OPENROUTER_API_KEY
-            ? "LLM 응답 파싱 실패 (타임아웃/형식 오류)"
-            : "OPENROUTER_API_KEY 미설정",
+          error: outcome.reason,
           snapshotDate: ctx.snapshotDate,
           financialPeriod: ctx.financialPeriod,
-          model: LLM_MODEL,
+          model: model.id,
         },
       });
       return;
     }
 
-    const result = buildResult(ctx, raw);
+    const result = buildResult(ctx, outcome.raw);
 
     await prisma.lynchAnalysis.update({
       where: { id: analysisId },
@@ -939,7 +984,7 @@ async function runLynchAnalysisInner(analysisId: string, ticker: string): Promis
         result: JSON.stringify(result),
         snapshotDate: ctx.snapshotDate,
         financialPeriod: ctx.financialPeriod,
-        model: LLM_MODEL,
+        model: model.id,
         error: null,
         generatedAt: new Date(),
       },
@@ -952,6 +997,7 @@ async function runLynchAnalysisInner(analysisId: string, ticker: string): Promis
         error: e instanceof Error ? e.message.slice(0, 300) : "분석 실패",
         snapshotDate: ctx.snapshotDate,
         financialPeriod: ctx.financialPeriod,
+        model: model.id,
       },
     });
   }

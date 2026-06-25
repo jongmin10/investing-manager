@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useSession, signIn } from "next-auth/react";
 import type { LynchResponse } from "@/lib/lynch-types";
+import { DEFAULT_LYNCH_MODEL, LYNCH_MODELS } from "@/lib/lynch-models";
 import LynchTickerInput from "@/components/lynch/LynchTickerInput";
 import LynchLoadingState from "@/components/lynch/LynchLoadingState";
 import LynchStockHeader from "@/components/lynch/LynchStockHeader";
@@ -17,6 +18,21 @@ type AnalysisState = "idle" | "pending" | "done" | "failed";
 const POLL_INTERVAL_MS   = 1500;
 const TIMEOUT_MS         = 30_000;
 
+// 진행 단계·진행률을 '실제 경과시간'으로 도출 — 폴링 횟수로 가짜 전진시키지 않는다.
+// 백엔드는 pending→done 단일 신호만 주므로 개별 단계의 실시간 보고는 불가하나,
+// 실제 소요 분포(DB·스냅샷은 수초, AI가 대부분)를 반영해 표시한다.
+//  - 0~1.5s: DB 조회 / 1.5~3.5s: 스냅샷 준비 / 이후: AI 실행(완료까지 이 단계 유지)
+function stepFromElapsed(sec: number): number {
+  if (sec < 1.5) return 0;
+  if (sec < 3.5) return 1;
+  return 2; // "AI 분석 모델 실행 중" — done 감지 전까지 여기서 머문다(저장 단계로 넘기지 않음)
+}
+// 점근 곡선: 초반 빠르게 오르다 완만해지며 완료 전까지 95%를 넘지 않는다.
+// (실제 done 시 로딩 UI가 사라지므로 100%까지 채울 필요 없음 — "100% 멈춤" 인상 제거)
+function progressFromElapsed(sec: number): number {
+  return Math.min(0.95, 1 - Math.exp(-sec / 10));
+}
+
 export default function LynchPage() {
   const { data: session, status: sessionStatus } = useSession();
 
@@ -24,8 +40,8 @@ export default function LynchPage() {
   const [data,          setData]          = useState<LynchResponse | null>(null);
   const [errorMsg,      setErrorMsg]      = useState<string | null>(null);
   const [authError,     setAuthError]     = useState(false);
-  const [loadingStep,   setLoadingStep]   = useState(0);
   const [elapsed,       setElapsed]       = useState(0);
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_LYNCH_MODEL.id);
 
   const abortRef   = useRef<AbortController | null>(null);
   const timerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -48,7 +64,6 @@ export default function LynchPage() {
 
   const poll = useCallback(
     async (ticker: string, controller: AbortController) => {
-      let step = 1;
       while (!controller.signal.aborted) {
         await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
         if (controller.signal.aborted) break;
@@ -90,9 +105,7 @@ export default function LynchPage() {
             return;
           }
 
-          // still pending — advance visual step
-          setLoadingStep(Math.min(step, 3));
-          step++;
+          // still pending — 진행 표시는 elapsed 기반으로 렌더에서 도출하므로 여기선 대기만.
         } catch (e) {
           if ((e as Error).name === "AbortError") break;
           setErrorMsg("네트워크 오류가 발생했습니다. 다시 시도해 주세요.");
@@ -117,7 +130,6 @@ export default function LynchPage() {
       setData(null);
       setErrorMsg(null);
       setAuthError(false);
-      setLoadingStep(0);
       startElapsed();
 
       const controller = new AbortController();
@@ -137,7 +149,7 @@ export default function LynchPage() {
         const res = await fetch(`/api/lynch/${ticker}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ model: selectedModel }),
           signal: controller.signal,
         });
 
@@ -166,8 +178,7 @@ export default function LynchPage() {
           return;
         }
 
-        // pending — 폴링 시작
-        setLoadingStep(1);
+        // pending — 폴링 시작 (진행 표시는 elapsed 기반으로 렌더에서 도출)
         await poll(ticker, controller);
       } catch (e) {
         if ((e as Error).name === "AbortError") return;
@@ -176,7 +187,7 @@ export default function LynchPage() {
         cleanup();
       }
     },
-    [session, poll, startElapsed]
+    [session, poll, startElapsed, selectedModel]
   );
 
   const isLoggedIn   = sessionStatus !== "loading" && !!session;
@@ -197,7 +208,7 @@ export default function LynchPage() {
             🐢 한국 종목 6자리 코드 전용
           </span>
           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-violet-600 bg-violet-50 border border-violet-100 px-2 py-0.5 rounded-full">
-            ✦ Gemini 2.5 Flash 하이브리드 분석
+            ✦ {LYNCH_MODELS.find((m) => m.id === selectedModel)?.label ?? DEFAULT_LYNCH_MODEL.label}
           </span>
         </div>
       </div>
@@ -253,6 +264,8 @@ export default function LynchPage() {
         <LynchTickerInput
           onSubmit={handleAnalyse}
           disabled={inputDisabled || (!isLoggedIn && !isLoading)}
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
         />
         <p className="text-xs text-gray-400 mt-2">
           코스피·코스닥 시총 상위 200 종목이 자동완성됩니다. 6자리 코드를 직접 입력해도 됩니다.
@@ -272,7 +285,11 @@ export default function LynchPage() {
 
       {/* ── 로딩 ── */}
       {analysisState === "pending" && (
-        <LynchLoadingState step={loadingStep} elapsed={elapsed} />
+        <LynchLoadingState
+          step={stepFromElapsed(elapsed)}
+          elapsed={elapsed}
+          progress={progressFromElapsed(elapsed)}
+        />
       )}
 
       {/* ── 에러 ── */}

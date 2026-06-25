@@ -1,5 +1,8 @@
 // 피터 린치 종목분석 — 백엔드·프론트 공용 API 계약 (단일 출처).
-// docs/peter-lynch-feature-spec.md §5 확정 계약. 임의 변경 금지.
+// docs/peter-lynch-feature-spec.md §5 확정 계약.
+// result 유니온은 "PASS" | "FAIL" | "CAUTION" | "NA" — CAUTION(주의: 중간 구간)은
+// 2026-06 품질 튜닝에서 승인된 확장. 그 외 임의 변경 금지.
+// 모델 allowlist 계약은 src/lib/lynch-models.ts (LYNCH_MODELS) 가 단일 출처.
 
 // GET/POST /api/lynch/[ticker] 공통 응답
 export interface LynchResponse {
@@ -52,13 +55,13 @@ export interface LynchMetric {
   value: string | null; // 포맷된 문자열 "0.8x" / null=확인불가
   numericValue: number | null; // 색상·정렬용 원시값
   lynchCriterion: string;
-  result: "PASS" | "FAIL" | "NA";
+  result: "PASS" | "FAIL" | "CAUTION" | "NA"; // CAUTION=중간 구간(실패 아님·이상적 아님)
   comment: string;
   source: string; // "2024A DART" | "NAVER" | "공시에서 확인 불가"
 }
 
 export interface LynchFlag {
   label: string;
-  result: "PASS" | "FAIL" | "NA";
+  result: "PASS" | "FAIL" | "CAUTION" | "NA"; // CAUTION=중간 구간(실패 아님·이상적 아님)
   comment: string;
 }

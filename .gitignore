@@ -56,5 +56,9 @@ claude-dev.ps1
 **/settings.local.json
 
 # local playwright verify scripts & shots
-/pw-verify*.mjs
+/pw-*.mjs
 /playwright-screenshots/
+
+# local dev server artifacts
+/dev-server.log
+/dev-server.pid

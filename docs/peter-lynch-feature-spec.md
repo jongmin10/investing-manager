@@ -187,14 +187,34 @@ interface LynchMetric {
   value: string | null;          // 포맷된 문자열 "0.8x" / null=확인불가
   numericValue: number | null;   // 색상·정렬용 원시값
   lynchCriterion: string;
-  result: "PASS" | "FAIL" | "NA";
+  result: "PASS" | "FAIL" | "CAUTION" | "NA";   // CAUTION = 주의(중간 구간) — 2026-06 품질 튜닝 승인 확장
   comment: string;
   source: string;                // "2024A DART" | "NAVER" | "공시에서 확인 불가"
 }
 
-interface LynchFlag { label: string; result: "PASS" | "FAIL" | "NA"; comment: string; }
+interface LynchFlag { label: string; result: "PASS" | "FAIL" | "CAUTION" | "NA"; comment: string; }
 ```
 **혼합 처리 규칙:** `value:null && result:"NA"` → 프론트 `—`/회색. `twoMinuteDrill` 빈 필드 금지(백엔드가 최소 "(확인 불가)" 채움). 수치는 백엔드가 포맷+원시값 둘 다 제공.
+
+**`result` 4-state (2026-06 품질 튜닝 확장):** `PASS`(통과)·`FAIL`(실패)·`CAUTION`(주의: 실패는 아니나 이상적도 아닌 중간 구간)·`NA`(확인 불가). 프론트는 CAUTION에 amber(주의) 색상+아이콘을 매핑한다(wonder 디자인 확정). CAUTION이 백엔드 산출로 들어가는 지표: **PEG**(1.0~2.0), **EPS_CAGR_3Y**(0~15%), **OP_MARGIN_TREND**(보합 ±0.5%p), **DEBT_TO_EQUITY**(0.5~1.0; >1.0은 FAIL). 플래그(greenFlags/redFlags)도 result 유니온은 동일하나 현재 백엔드는 내부자/자사주를 metric 동기화로만 채우고, 나머지는 LLM이 PASS/FAIL/CAUTION/NA로 응답 가능.
+
+### 5-1. 모델 선택 계약 (2026-06)
+
+**단일 출처:** `src/lib/lynch-models.ts` — `LYNCH_MODELS: LynchModelOption[]` (프론트 드롭다운·백엔드 검증 공용 import).
+
+```typescript
+interface LynchModelOption { id: string; slug: string; label: string; isDefault: boolean; }
+// allowlist (id = API 파라미터/DB 저장값, slug = OpenRouter model)
+//  claude-haiku-4-5   → anthropic/claude-haiku-4.5   (isDefault: true, 기본)
+//  claude-sonnet-4-6  → anthropic/claude-sonnet-4.6
+//  gemini-2-5-flash   → google/gemini-2.5-flash
+export const DEFAULT_LYNCH_MODEL = LYNCH_MODELS.find(m => m.isDefault)!; // = claude-haiku-4-5
+export function resolveLynchModel(id?: string | null): LynchModelOption; // 무효/없음 → 기본 폴백
+```
+
+**POST `/api/lynch/[ticker]` 요청 body:** `{ force?: boolean; model?: string }` — `model`은 allowlist의 `id`. body 우선, 없으면 query `?model=`. 무효/누락 시 기본(`claude-haiku-4-5`)으로 폴백. 드롭다운 기본 선택값 = `DEFAULT_LYNCH_MODEL.id`.
+
+**캐시 키 & 모델:** DB unique는 `[ticker, snapshotDate]` 단일 행(변경 없음, 마이그레이션 불필요). 단, **done 캐시 히트 재사용 판정에 모델을 포함** — 직전 분석의 `LynchAnalysis.model`이 요청 모델과 다르면 캐시 미스로 간주하고 재실행(행 덮어쓰기). 따라서 모델을 바꿔 재요청하면 해당 모델로 새 분석이 수행된다.
 
 ---
 
