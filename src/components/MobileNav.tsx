@@ -18,7 +18,7 @@ const MORE_ITEMS = [
   { href: "/journal",            icon: "📔", label: "투자 일기"    },
   { href: "/gurus",              icon: "🏆", label: "대가 13F"     },
   { href: "/screener/watchlist", icon: "★",  label: "관심종목"     },
-  { href: "/screener/lynch",     icon: "🐢", label: "린치 분석"    },
+  { href: "/screener/lynch",     icon: "🐢", label: "피터 린치 분석" },
   { href: "/glossary",           icon: "📖", label: "용어사전"     },
   { href: "/calendar",           icon: "📅", label: "경제 캘린더"  },
   { href: "/alerts",             icon: "🔔", label: "알림 설정"    },

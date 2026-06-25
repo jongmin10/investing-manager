@@ -20,7 +20,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/screener",   icon: "🔍", label: "종목 스크리너",
     children: [
       { href: "/screener/watchlist", icon: "★",  label: "관심종목" },
-      { href: "/screener/lynch",     icon: "🐢", label: "린치 분석" },
+      { href: "/screener/lynch",     icon: "🐢", label: "피터 린치 분석" },
     ],
   },
   { href: "/glossary",   icon: "📖", label: "용어사전" },
