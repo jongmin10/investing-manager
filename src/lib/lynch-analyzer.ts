@@ -595,14 +595,16 @@ async function buildStockContext(ticker: string): Promise<
     `부채총계: ${fin?.totalDebt != null ? `${fin.totalDebt.toLocaleString()}억원` : "확인 불가"}  자본총계: ${fin?.totalEquity != null ? `${fin.totalEquity.toLocaleString()}억원` : "확인 불가"}  현금성자산: ${fin?.cash != null ? `${fin.cash.toLocaleString()}억원` : "확인 불가"}`,
     `연간 재무 수집연도: ${annualSeries.length > 0 ? annualSeries.map((f) => f.period).join(", ") : "없음"}`,
     "",
-    "[코드가 계산한 핵심 지표 — 이 값을 그대로 '사실'로 사용하라]",
-    `PEG = ${peg.value ?? "확인 불가"} (${peg.comment})`,
-    `Debt-to-Equity = ${debtToEquity.value ?? "확인 불가"} (${debtToEquity.comment})`,
-    `현금/시총 = ${cashToMcap.value ?? "확인 불가"} (${cashToMcap.comment})`,
-    `EPS 3년 CAGR = ${epsCagr3y.value ?? "확인 불가"} (${epsCagr3y.comment})`,
-    `영업이익률 추이 = ${opMarginTrend.value ?? "확인 불가"} (${opMarginTrend.comment})`,
-    `내부자 매수vs매도(6M) = ${insiderTrading.value ?? "확인 불가"} (${insiderTrading.comment})`,
-    `자사주 매입 추이 = ${buybackTrend.value ?? "확인 불가"} (${buybackTrend.comment})`,
+    // 토큰 최적화: 장황한 .comment 대신 값+판정[result]만 주입(체크리스트 코멘트는
+    // 코드가 산출하므로 LLM 은 판정만 알면 verdict/분류 추론에 충분). value=null 이면 NA.
+    "[코드 산출 지표 — 이 값·판정을 그대로 '사실'로 사용하라. value 없으면 확인 불가(NA)]",
+    `PEG = ${peg.value ?? "확인 불가"} [${peg.result}]`,
+    `Debt-to-Equity = ${debtToEquity.value ?? "확인 불가"} [${debtToEquity.result}]`,
+    `현금/시총 = ${cashToMcap.value ?? "확인 불가"} [${cashToMcap.result}]`,
+    `EPS 3년 CAGR = ${epsCagr3y.value ?? "확인 불가"} [${epsCagr3y.result}]`,
+    `영업이익률 추이 = ${opMarginTrend.value ?? "확인 불가"} [${opMarginTrend.result}]`,
+    `내부자 매수vs매도(6M) = ${insiderTrading.value ?? "확인 불가"} [${insiderTrading.result}]`,
+    `자사주 매입 추이 = ${buybackTrend.value ?? "확인 불가"} [${buybackTrend.result}]`,
     "",
     "[확인 불가 항목 — 반드시 '공시에서 확인 불가'로 처리하고 숫자를 지어내지 마라]",
     `- 기관 보유율(5% 미만 여부)은 DART 미제공 — 그린플래그에서 NA 처리.`,
@@ -656,47 +658,32 @@ interface LlmRaw {
 }
 
 function buildUserPrompt(ctx: StockContext): string {
-  return `다음은 분석 대상 한국 종목의 '코드가 DB에서 확정한 사실'이다. 아래 사실만 숫자 근거로 사용하고, 없는 숫자는 절대 지어내지 마라.
+  // 토큰 최적화(2026-06): checklistComments 제거(체크리스트 코멘트는 코드가 산출 —
+  // LLM 중복 불필요), 플래그는 label 제거(코드가 normalizeFlags 의 defaultLabels 로
+  // index 정렬 주입)·comment 35자 제한. 시스템 정책의 [그린/레드플래그 순서]와 index 로 정렬된다.
+  return `분석 대상 한국 종목의 '코드가 확정한 사실'이다. 아래 숫자만 근거로 쓰고 없는 숫자는 지어내지 마라.
 
 ${ctx.facts}
 
-위 사실을 바탕으로 피터 린치 6단계 프레임워크 분석을 수행하고, 반드시 아래 JSON 스키마로만 응답하라. 마크다운/설명 없이 JSON 객체 하나만 출력하라.
+피터 린치 6단계로 분석 후 아래 JSON만 출력(마크다운·설명 금지). greenFlags/redFlags 는 시스템의 [그린/레드플래그 순서]대로 결과만 적고, comment 는 각 35자 이내.
 
 {
-  "categories": [{"type": "SLOW_GROWER|STALWART|FAST_GROWER|CYCLICAL|ASSET_PLAY|TURNAROUND", "weightPct": 70, "rationale": "매출성장·마진·산업사이클 근거 (한 문장)"}],
-  "twoMinuteDrill": {
-    "whatItSells": "이 회사는 무엇을 파는가 (50자 이내)",
-    "whosBuying": "누가 사주는가 + 경쟁구조 (50자 이내)",
-    "howItMakesMoney": "어떻게 돈을 버는가 (50자 이내)",
-    "biggestRisk": "무엇이 망가지면 무너지는가 (50자 이내)"
-  },
-  "checklistComments": { "PEG": "한 줄 코멘트", "DEBT_TO_EQUITY": "한 줄 코멘트", "CASH_TO_MCAP": "한 줄 코멘트", "EPS_CAGR_3Y": "한 줄 코멘트", "OP_MARGIN_TREND": "한 줄 코멘트", "INSIDER_TRADING": "한 줄 코멘트", "BUYBACK_TREND": "한 줄 코멘트" },
-  "greenFlags": [
-    {"label": "이름/발음이 지루한가", "result": "PASS|FAIL|CAUTION|NA", "comment": "한 줄"},
-    {"label": "사업이 따분·혐오스러운가", "result": "PASS|FAIL|CAUTION|NA", "comment": "한 줄"},
-    {"label": "분사(spin-off) 기업인가", "result": "PASS|FAIL|CAUTION|NA", "comment": "한 줄"},
-    {"label": "기관 보유율이 낮은가(5% 미만)", "result": "PASS|FAIL|CAUTION|NA", "comment": "한 줄"},
-    {"label": "내부자가 자기 돈으로 사는가", "result": "PASS|FAIL|CAUTION|NA", "comment": "한 줄"},
-    {"label": "자사주 매입 중인가", "result": "PASS|FAIL|CAUTION|NA", "comment": "한 줄"}
-  ],
-  "redFlags": [
-    {"label": "'다음 OO'로 불리는가", "result": "PASS|FAIL|CAUTION|NA", "comment": "한 줄"},
-    {"label": "diworsification 흔적", "result": "PASS|FAIL|CAUTION|NA", "comment": "한 줄"},
-    {"label": "한 고객이 매출 25% 이상", "result": "PASS|FAIL|CAUTION|NA", "comment": "한 줄"},
-    {"label": "핫한 산업의 핫한 종목인가", "result": "PASS|FAIL|CAUTION|NA", "comment": "한 줄"},
-    {"label": "경영진이 거시 핑계를 대는가", "result": "PASS|FAIL|CAUTION|NA", "comment": "한 줄"}
-  ],
-  "verdict": {"action": "BUY|HOLD|SELL", "rationale": "1~4단계 종합 사고흐름 (한 단락)"},
-  "validation": {"weakestAssumption": "이 분석의 가장 약한 가정 (한 줄)", "sources": ["검증할 1차자료1", "검증할 1차자료2"]}
+  "categories": [{"type": "SLOW_GROWER|STALWART|FAST_GROWER|CYCLICAL|ASSET_PLAY|TURNAROUND", "weightPct": 70, "rationale": "근거 한 문장"}],
+  "twoMinuteDrill": {"whatItSells": "50자내", "whosBuying": "50자내", "howItMakesMoney": "50자내", "biggestRisk": "50자내"},
+  "greenFlags": [{"result": "PASS|FAIL|CAUTION|NA", "comment": "35자"}, {"result": "..", "comment": ".."}, {"result": "..", "comment": ".."}, {"result": "NA", "comment": "공시에서 확인 불가"}, {"result": "..", "comment": ".."}, {"result": "..", "comment": ".."}],
+  "redFlags": [{"result": "PASS|FAIL|CAUTION|NA", "comment": "35자"}, {"result": "..", "comment": ".."}, {"result": "..", "comment": ".."}, {"result": "..", "comment": ".."}, {"result": "..", "comment": ".."}],
+  "verdict": {"action": "BUY|HOLD|SELL", "rationale": "1~4단계 종합 사고흐름 2~3문장"},
+  "validation": {"weakestAssumption": "가장 약한 가정 한 줄", "sources": ["1차자료1", "1차자료2"]}
 }
 
 주의:
-- result 값은 PASS(통과)·FAIL(실패)·CAUTION(주의: 실패는 아니나 이상적도 아닌 중간 구간)·NA(확인 불가) 4종이다. 애매하게 부담스럽거나 보합/둔화 같은 중간 구간은 FAIL이 아니라 CAUTION으로 표시하라.
-- '기관 보유율이 낮은가(5% 미만)' 그린플래그는 DART 미제공이므로 result는 "NA", comment는 "공시에서 확인 불가" 취지로 적어라. 숫자를 추정하지 마라.
-- 부채비율(D/E)·현금/시총·EPS 3년 CAGR·영업이익률 추이·내부자 매수vs매도·자사주 매입 추이는 위 '코드가 계산한 핵심 지표'에 값이 있으면 그 값(PASS/FAIL/CAUTION/NA 포함)을 사실로 받아들이고, "확인 불가"로 표시된 경우에만 NA로 처리하라. checklistComments에는 해당 지표에 대한 해석 코멘트만 한 줄로 적어라(숫자·판정 재계산 금지 — CAUTION을 임의로 PASS/FAIL로 바꾸지 마라). 내부자/자사주 그린플래그는 코드 산출값으로 동기화되니 일관되게 적어라.
-- greenFlags는 정확히 6개, redFlags는 정확히 5개, categories는 1~2개.
-- 모든 텍스트는 한국어. 재무용어 영어 병기 허용.`;
+- 4번 그린플래그(기관 보유율 5%미만)는 DART 미제공 → result "NA", comment "공시에서 확인 불가". 숫자 추정 금지.
+- D/E·현금/시총·EPS CAGR·영업이익률·내부자·자사주는 '코드 산출 지표'의 판정(PASS/FAIL/CAUTION/NA)을 그대로 신뢰하고, 보합·둔화 등 중간 구간은 FAIL이 아니라 CAUTION으로 본다(판정 재계산 금지).
+- greenFlags 정확히 6개, redFlags 정확히 5개, categories 1~2개. 모든 텍스트 한국어.`;
 }
+
+// LLM 출력 토큰 상한 (선예약 비용·잘림 트레이드오프 — 위 max_tokens 주석 참고).
+const LLM_MAX_TOKENS = 1300;
 
 // LLM 호출 결과 — 성공 시 raw, 실패 시 사용자에게 보일 명확한 사유.
 type LlmOutcome = { ok: true; raw: LlmRaw } | { ok: false; reason: string };
@@ -717,7 +704,10 @@ async function callLlm(ctx: StockContext, model: LynchModelOption): Promise<LlmO
       { role: "user", content: buildUserPrompt(ctx) },
     ],
     temperature: 0.3,
-    max_tokens: 2500,
+    // 토큰 최적화(2026-06): 압축 정책+스키마로 실측 출력 ~1,010토큰 → 1,300 으로 상한
+    // 축소(헤드룸 ~290). OpenRouter 는 max_tokens 만큼 크레딧을 선예약하므로, 상한을
+    // 낮추면 402(크레딧 부족) 여유가 커진다. 출력 잘림(finish=length) 발생 시 상향 조정.
+    max_tokens: LLM_MAX_TOKENS,
   });
 
   // 전체 LLM 단계 예산. route 의 maxDuration(60s) 안에서 끝내야 after() 태스크가
