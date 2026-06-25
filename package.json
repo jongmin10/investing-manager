@@ -9,6 +9,7 @@
     "lint": "eslint",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:etf": "tsx prisma/seed-etf.ts",
+    "index:backfill": "tsx scripts/backfill-index-history.ts",
     "etf:recalc": "node scripts/recalc-etf-returns.mjs"
   },
   "prisma": {

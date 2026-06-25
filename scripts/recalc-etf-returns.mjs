@@ -9,19 +9,23 @@
  * ⚠️ 안전장치:
  *   - 기본 DRY-RUN. 실제 반영은 `--apply` 필요.
  *   - 인덱스 히스토리 기간이 MIN_YEARS 미만이면 "데이터 부족"으로 스킵(기존 시드값 보존).
- *     (현재 IndicatorRecord 는 최근 며칠치만 보존되어 3년 CAGR 산출 불가 → seed-etf.ts 의 수동값 유지)
  *   - 환율(KRW/USD) 반영은 미구현. 해외지수(SP500/NASDAQ100)는 KRW 환산 차이가 있으므로
  *     --apply 시에도 해외지수는 별도 플래그(--include-fx-naive) 없이는 스킵. TODO 참고.
+ *
+ * 사전 준비(히스토리 백필):
+ *   야간 cron(collectRealtimeData)은 당일 1포인트만 적재하므로, CAGR 산출에 필요한 3년치
+ *   히스토리는 아래 백필 스크립트로 먼저 채워야 한다. KOSPI200 은 전용 지수(type="KOSPI200",
+ *   yahoo="^KS200")로 수집된다.
+ *     npx tsx scripts/backfill-index-history.ts            # KOSPI200 백필
+ *     npx tsx scripts/backfill-index-history.ts --type=KOSPI200,SP500
  *
  * 실행:
  *   node scripts/recalc-etf-returns.mjs            # dry-run, 산출치만 출력
  *   node scripts/recalc-etf-returns.mjs --apply    # 충분한 히스토리가 있는 국내지수만 반영
  *
  * TODO (collector 연동 확장):
- *   1) IndicatorRecord 가 3년 일별 히스토리를 보존하도록 수집 정책 확정(현재 최근치만 유지됨).
- *   2) KOSPI200 전용 지수 수집(현재 type="KOSPI"만 존재) 또는 KOSPI 대용 명시.
- *   3) 해외지수 KRW 환산: SP500/NASDAQ100 × (KRW_USD_end / KRW_USD_start) 로 원화 누적수익률 산출.
- *   4) returnPeriod 문자열도 산출 기간에 맞춰 자동 갱신("N년").
+ *   1) 해외지수 KRW 환산: SP500/NASDAQ100 × (KRW_USD_end / KRW_USD_start) 로 원화 누적수익률 산출.
+ *   2) returnPeriod 문자열도 산출 기간에 맞춰 자동 갱신("N년").
  */
 import { PrismaClient } from "@prisma/client";
 

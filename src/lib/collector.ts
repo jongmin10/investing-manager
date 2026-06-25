@@ -3,6 +3,7 @@ import { prisma } from "./prisma";
 // 실시간 수집 대상 지표 — Yahoo Finance 심볼 매핑
 export const REALTIME_SYMBOLS = [
   { type: "KOSPI",           yahoo: "^KS11",  dp: 1 },
+  { type: "KOSPI200",        yahoo: "^KS200", dp: 2 },
   { type: "KOSDAQ",          yahoo: "^KQ11",  dp: 2 },
   { type: "SP500",           yahoo: "^GSPC",  dp: 2 },
   { type: "NASDAQ100",       yahoo: "^NDX",   dp: 2 },
