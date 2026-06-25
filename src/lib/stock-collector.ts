@@ -26,6 +26,7 @@ export interface StockQuote {
   pbr:           number | null; // NAVER _pbr
   dividendYield: number | null; // NAVER _dvr      (배당수익률 %)
   sector:        string | null; // NAVER 업종 (동적 유니버스 신규 종목 보강용)
+  foreignHoldRatio: number | null; // NAVER m.stock trend foreignerHoldRatio (외국인 보유율 %)
 }
 
 export interface CollectStocksResult {
@@ -75,16 +76,41 @@ async function fetchNaverValuation(code: string): Promise<{
   }
 }
 
+// NAVER 모바일 API에서 외국인 보유율 파싱 (한국 주식 전용).
+// 한국 시장은 미국 13F식 per-stock '기관 보유율'을 공개하지 않는다. NAVER가 안정적으로
+// 제공하는 per-stock 소유 지표는 외국인 보유율(foreignerHoldRatio)뿐 → 린치 ④그린플래그
+// '언더더레이더(기관 보유율<5%)'의 대용 지표로 사용. trend는 최신순 배열, [0].foreignerHoldRatio = "47.41%".
+async function fetchNaverForeignHoldRatio(code: string): Promise<number | null> {
+  try {
+    const res = await fetch(`https://m.stock.naver.com/api/stock/${code}/trend`, {
+      headers: { "User-Agent": NAVER_HEADERS["User-Agent"], "Referer": "https://m.stock.naver.com/" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { foreignerHoldRatio?: string }[];
+    if (!Array.isArray(json) || json.length === 0) return null;
+    // 최신 영업일(배열 0번)의 보유율. "47.41%" → 47.41
+    const raw = json[0]?.foreignerHoldRatio;
+    if (typeof raw !== "string") return null;
+    const num = parseFloat(raw.replace(/[%,\s]/g, ""));
+    return Number.isFinite(num) ? num : null;
+  } catch {
+    return null;
+  }
+}
+
 // ── v8 chart API (가격·52주 고저·거래량) + NAVER Finance (PER·PBR) 병렬 수집 ──
 async function fetchOne(symbol: string): Promise<StockQuote | null> {
   const chartUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d&includePrePost=false`;
   const naverCode = symbol.replace(/\.(KS|KQ)$/, "");
   const isKorean  = naverCode !== symbol;
 
-  const [chartRes, naver] = await Promise.all([
+  const [chartRes, naver, foreignHoldRatio] = await Promise.all([
     fetch(chartUrl, { headers: YF_HEADERS, cache: "no-store", signal: AbortSignal.timeout(10_000) })
       .catch(() => null),
     isKorean ? fetchNaverValuation(naverCode) : Promise.resolve({ per: null, cnsPer: null, cnsEps: null, pbr: null, dividendYield: null, sector: null }),
+    isKorean ? fetchNaverForeignHoldRatio(naverCode) : Promise.resolve(null),
   ]);
 
   if (!chartRes?.ok) return null;
@@ -123,6 +149,7 @@ async function fetchOne(symbol: string): Promise<StockQuote | null> {
     pbr:           naver.pbr,
     dividendYield: naver.dividendYield,
     sector:        naver.sector,
+    foreignHoldRatio,
   };
 }
 
@@ -196,6 +223,7 @@ export async function collectAllStocks(
         cnsEps:        quote.cnsEps,
         pbr:           quote.pbr,
         dividendYield: quote.dividendYield,
+        foreignHoldRatio: quote.foreignHoldRatio,
       };
 
       // 업종 보강: 새로 파싱한 sector가 있고 기존과 다르면 Stock.sector 갱신 (추가 요청 없음)
@@ -211,7 +239,8 @@ export async function collectAllStocks(
         const valuationChanged = existing.cnsPer !== quote.cnsPer
           || existing.per    !== quote.trailingPE
           || existing.cnsEps !== quote.cnsEps
-          || existing.dividendYield !== quote.dividendYield;
+          || existing.dividendYield !== quote.dividendYield
+          || existing.foreignHoldRatio !== quote.foreignHoldRatio;
         if (priceChanged || valuationChanged) {
           writes.push(prisma.stockSnapshot.update({
             where: { id: existing.id },

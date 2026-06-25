@@ -97,7 +97,7 @@ export default function LynchStockHeader({ data }: Props) {
           aria-label="데이터 확인 불가 항목"
         >
           <p className="text-xs font-semibold text-amber-700 mb-1">
-            ⚠ 아래 항목은 현재 수집 파이프라인으로 확인할 수 없어 &ldquo;확인 불가&rdquo;로 표시됩니다
+            ⚠ 아래 항목은 측정 한계 또는 대용 지표 사용 사실을 고지합니다
           </p>
           <div className="flex flex-wrap gap-1.5">
             {data.dataLimitations.map((lim, i) => (

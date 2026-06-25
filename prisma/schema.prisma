@@ -198,6 +198,10 @@ model StockSnapshot {
   dividendYield Float?            // 배당수익률 (%)       — NAVER _dvr
   volume       Float?             // 거래량
   avgVolume20d Float?             // 20일 평균 거래량
+  // Phase 4 (피터 린치 ④그린플래그): 외국인 보유율 (%) — NAVER m.stock trend foreignerHoldRatio.
+  // 한국 시장은 미국 13F식 '기관 보유율' 미공개 → 린치 '언더더레이더(기관 보유율<5%)'의
+  // 유일하게 신뢰가능한 per-stock 대용 지표로 외국인+기관 대표값인 외국인 보유율을 사용.
+  foreignHoldRatio Float?         // 외국인 보유율 (%) — 점시점성, NAVER trend(최신 bizdate)
 
   @@unique([stockId, date])
   @@index([date])

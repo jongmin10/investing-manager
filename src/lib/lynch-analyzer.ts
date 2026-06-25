@@ -16,8 +16,9 @@ import type {
 // GAP 지표 — 현 수집 파이프라인으로 확보 불가한 체크리스트 지표.
 // Phase 2에서 DEBT_TO_EQUITY·CASH_TO_MCAP·EPS_CAGR_3Y, Phase 3에서 INSIDER_TRADING·
 // BUYBACK_TREND가 모두 DART 소스로 해소됨 → 하드 GAP(체크리스트) 없음.
-// 데이터 결측 시에는 각 산출 함수가 NA로 정직 처리(강제 덮어쓰기 불필요).
-// 남은 GAP은 ④그린플래그의 '기관 보유율<5%'(DART 미제공)뿐 — 해당 플래그만 NA 강제.
+// Phase 4에서 ④그린플래그 '기관 보유율<5%'를 외국인 보유율(NAVER) 대용값으로 해소
+// (한국 시장은 미국 13F식 per-stock 기관 보유율 미공개 → 외국인 보유율을 대표 대용 지표로 사용).
+// 데이터 결측 시에는 각 산출 함수가 NA로 정직 처리(강제 덮어쓰기 없음).
 // ─────────────────────────────────────────────────────────────────────────────
 const GAP_METRIC_KEYS = new Set<LynchMetricKey>([]);
 
@@ -62,11 +63,12 @@ const SIX_CATEGORIES = new Set<SixCategory>([
   "TURNAROUND",
 ]);
 
-// 프론트 경고 표시용 라벨 (dataLimitations) — 영구 미수집 항목만.
+// 프론트 경고 표시용 라벨 (dataLimitations) — 측정 한계/대용 지표 고지.
 // 체크리스트 7지표는 Phase 1~3에서 모두 DART 소스 확보(데이터 있으면 산출, 없으면 개별 NA).
-// 남은 미수집은 ④그린플래그 '기관 보유율<5%'뿐.
+// ④그린플래그 '기관 보유율<5%'는 Phase 4에서 외국인 보유율(NAVER) 대용으로 산출 —
+// 한국 시장은 미국 13F식 per-stock 기관 보유율을 공개하지 않아 외국인 보유율을 대표 대용으로 사용한다(고지).
 const GAP_LIMITATION_LABELS = [
-  "기관 보유율 (DART 미제공)",
+  "기관 보유율: 외국인 보유율로 대용 (한국 시장은 기관 보유율 미공개)",
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -80,6 +82,8 @@ interface ComputedMetrics {
   opMarginTrend: LynchMetric;
   insiderTrading: LynchMetric;
   buybackTrend: LynchMetric;
+  // ④그린플래그 전용(체크리스트 7지표 외) — 외국인 보유율 기반 '기관 보유율<5%' 판정.
+  foreignHoldFlag: LynchFlag;
 }
 
 interface StockContext {
@@ -491,6 +495,26 @@ function computeBuybackTrend(
   };
 }
 
+// ④그린플래그 '기관 보유율 낮은가(5% 미만)' — 린치의 '언더더레이더' 신호.
+// 한국 시장은 미국 13F식 per-stock '기관 보유율'을 공개하지 않으므로, NAVER가 안정적으로
+// 제공하는 per-stock 소유 지표인 외국인 보유율(foreignerHoldRatio)을 대용값으로 사용한다.
+// 린치 임계(5% 미만 = 저관심)를 그대로 적용: 5%미만 PASS, 5%이상 FAIL, 데이터 없으면 NA.
+// 외국인 보유율은 기관 성격 자금(외국 기관·연기금 등) 비중의 대표 지표라 '저관심' 판정에 부합.
+function computeForeignHoldFlag(ratio: number | null): LynchFlag {
+  const label = "기관 보유율이 낮은가(5% 미만)";
+  if (ratio == null || !Number.isFinite(ratio)) {
+    return { label, result: "NA", comment: "외국인 보유율 미수집 — 확인 불가." };
+  }
+  // toFixed(1) 후 비교 — 표시값과 판정 일치 보장.
+  // (raw float으로 비교하면 4.95 → display "5.0%" 이지만 result=PASS 모순 발생)
+  const r = parseFloat(ratio.toFixed(1));
+  const display = r.toFixed(1);
+  if (r < 5) {
+    return { label, result: "PASS", comment: `외국인 보유율 ${display}%로 5% 미만 — 저관심(언더더레이더, 외국인 보유율 대용).` };
+  }
+  return { label, result: "FAIL", comment: `외국인 보유율 ${display}%로 5% 이상 — 기관(외국인) 관심 높음(외국인 보유율 대용).` };
+}
+
 // GAP 지표 — 항상 "확인 불가" 메트릭 생성
 function gapMetric(key: LynchMetricKey, reason: string): LynchMetric {
   return {
@@ -572,6 +596,9 @@ async function buildStockContext(ticker: string): Promise<
     annualSeries.map((f) => ({ period: f.period, acqs: f.treasuryAcqs, dsps: f.treasuryDsps, held: f.treasuryHeld })),
   );
 
+  // ④그린플래그 '기관 보유율<5%' — 외국인 보유율(NAVER) 대용. 결측 시 NA(강제 아님).
+  const foreignHoldFlag = computeForeignHoldFlag(snapshot.foreignHoldRatio ?? null);
+
   const market = (stock.market === "KOSDAQ" ? "KOSDAQ" : "KOSPI") as "KOSPI" | "KOSDAQ";
 
   // LLM 주입용 사실 — 코드가 산출한 수치만 '사실'로 전달
@@ -586,6 +613,7 @@ async function buildStockContext(ticker: string): Promise<
     `PER: ${fmtNum(snapshot.per, 2) ?? "확인 불가"}  컨센서스PER: ${fmtNum(snapshot.cnsPer, 2) ?? "확인 불가"}`,
     `PBR: ${fmtNum(snapshot.pbr, 2) ?? "확인 불가"}`,
     `배당수익률: ${fmtNum(snapshot.dividendYield, 2) ?? "확인 불가"}%`,
+    `외국인 보유율: ${fmtNum(snapshot.foreignHoldRatio, 1) ?? "확인 불가"}% (기관 보유율 대용 — 그린플래그④)`,
     fin ? `재무기준: ${fin.period}` : "재무: 확인 불가",
     `매출: ${fin?.revenue != null ? `${fin.revenue.toLocaleString()}억원` : "확인 불가"}  매출성장 YoY: ${fmtNum(fin?.revenueGrowth) ?? "확인 불가"}%`,
     `영업이익: ${fin?.operatingProfit != null ? `${fin.operatingProfit.toLocaleString()}억원` : "확인 불가"}  영업이익성장 YoY: ${fmtNum(fin?.opGrowth) ?? "확인 불가"}%`,
@@ -605,9 +633,9 @@ async function buildStockContext(ticker: string): Promise<
     `영업이익률 추이 = ${opMarginTrend.value ?? "확인 불가"} [${opMarginTrend.result}]`,
     `내부자 매수vs매도(6M) = ${insiderTrading.value ?? "확인 불가"} [${insiderTrading.result}]`,
     `자사주 매입 추이 = ${buybackTrend.value ?? "확인 불가"} [${buybackTrend.result}]`,
+    `기관 보유율<5%(외국인 보유율 대용) = ${foreignHoldFlag.result === "NA" ? "확인 불가" : `외국인 ${fmtNum(snapshot.foreignHoldRatio, 1)}%`} [${foreignHoldFlag.result}]`,
     "",
     "[확인 불가 항목 — 반드시 '공시에서 확인 불가'로 처리하고 숫자를 지어내지 마라]",
-    `- 기관 보유율(5% 미만 여부)은 DART 미제공 — 그린플래그에서 NA 처리.`,
     ...(() => {
       // 데이터 결측으로 산출 불가한 지표만 추가 경고 (값이 있으면 LLM이 그대로 사용)
       const naComputed = [
@@ -616,6 +644,7 @@ async function buildStockContext(ticker: string): Promise<
         epsCagr3y.value == null ? "EPS 3년 CAGR" : null,
         insiderTrading.value == null ? "내부자 매수·매도" : null,
         buybackTrend.value == null ? "자사주 매입 추이" : null,
+        foreignHoldFlag.result === "NA" ? "기관 보유율(외국인 보유율 대용)" : null,
       ].filter((s): s is string => s != null);
       return naComputed.length > 0 ? [`- 이번 종목은 데이터 결측으로 확인 불가: ${naComputed.join(", ")}`] : [];
     })(),
@@ -631,7 +660,7 @@ async function buildStockContext(ticker: string): Promise<
       snapshotDate: snapshot.date,
       financialPeriod: fin?.period ?? null,
       facts,
-      computed: { peg, debtToEquity, cashToMcap, epsCagr3y, opMarginTrend, insiderTrading, buybackTrend },
+      computed: { peg, debtToEquity, cashToMcap, epsCagr3y, opMarginTrend, insiderTrading, buybackTrend, foreignHoldFlag },
     },
   };
 }
@@ -670,14 +699,14 @@ ${ctx.facts}
 {
   "categories": [{"type": "SLOW_GROWER|STALWART|FAST_GROWER|CYCLICAL|ASSET_PLAY|TURNAROUND", "weightPct": 70, "rationale": "근거 한 문장"}],
   "twoMinuteDrill": {"whatItSells": "50자내", "whosBuying": "50자내", "howItMakesMoney": "50자내", "biggestRisk": "50자내"},
-  "greenFlags": [{"result": "PASS|FAIL|CAUTION|NA", "comment": "35자"}, {"result": "..", "comment": ".."}, {"result": "..", "comment": ".."}, {"result": "NA", "comment": "공시에서 확인 불가"}, {"result": "..", "comment": ".."}, {"result": "..", "comment": ".."}],
+  "greenFlags": [{"result": "PASS|FAIL|CAUTION|NA", "comment": "35자"}, {"result": "..", "comment": ".."}, {"result": "..", "comment": ".."}, {"result": "PASS|FAIL|NA", "comment": ".."}, {"result": "..", "comment": ".."}, {"result": "..", "comment": ".."}],
   "redFlags": [{"result": "PASS|FAIL|CAUTION|NA", "comment": "35자"}, {"result": "..", "comment": ".."}, {"result": "..", "comment": ".."}, {"result": "..", "comment": ".."}, {"result": "..", "comment": ".."}],
   "verdict": {"action": "BUY|HOLD|SELL", "rationale": "1~4단계 종합 사고흐름 2~3문장"},
   "validation": {"weakestAssumption": "가장 약한 가정 한 줄", "sources": ["1차자료1", "1차자료2"]}
 }
 
 주의:
-- 4번 그린플래그(기관 보유율 5%미만)는 DART 미제공 → result "NA", comment "공시에서 확인 불가". 숫자 추정 금지.
+- 4번 그린플래그(기관 보유율 5%미만)는 코드가 외국인 보유율(기관 보유율 대용)로 판정해 덮어쓴다. 위 '코드 산출 지표'의 판정을 그대로 신뢰하고 임의 추정·재계산 금지(데이터 없으면 NA).
 - D/E·현금/시총·EPS CAGR·영업이익률·내부자·자사주는 '코드 산출 지표'의 판정(PASS/FAIL/CAUTION/NA)을 그대로 신뢰하고, 보합·둔화 등 중간 구간은 FAIL이 아니라 CAUTION으로 본다(판정 재계산 금지).
 - greenFlags 정확히 6개, redFlags 정확히 5개, categories 1~2개. 모든 텍스트 한국어.`;
 }
@@ -843,8 +872,9 @@ function buildResult(ctx: StockContext, raw: LlmRaw): LynchResult {
     "내부자가 자기 돈으로 사는가",
     "자사주 매입 중인가",
   ]);
-  // 기관보유율(3번 idx)은 DART 미제공 → NA 강제(영구 GAP).
-  forceNa(greenFlags, [3], "기관 보유율 데이터 미제공(DART) — 공시에서 확인 불가.");
+  // 기관 보유율(3번 idx) — Phase 4: 외국인 보유율(NAVER) 대용으로 코드 산출(5%미만 PASS).
+  // 데이터 결측 종목은 개별 NA(영구 강제 아님). LLM 추정 무시하고 코드 판정으로 덮어쓴다.
+  syncFlagFromMetric(greenFlags, 3, ctx.computed.foreignHoldFlag);
   // 내부자(4)·자사주(5) 플래그는 Phase 3 코드 산출값으로 동기화(체크리스트 #6·#7과 일치).
   syncFlagFromMetric(greenFlags, 4, ctx.computed.insiderTrading);
   syncFlagFromMetric(greenFlags, 5, ctx.computed.buybackTrend);
@@ -872,7 +902,7 @@ function buildResult(ctx: StockContext, raw: LlmRaw): LynchResult {
   const validation = {
     weakestAssumption: nonEmpty(
       raw.validation?.weakestAssumption,
-      "기관 보유율(DART 미제공) 미반영 — 수급(언더더레이더 여부) 판단이 가장 약한 가정.",
+      "기관 보유율을 외국인 보유율로 대용 — 순수 국내 기관 비중과 차이가 있어 수급(언더더레이더) 판단이 가장 약한 가정.",
     ),
     sources: [
       nonEmpty(srcArr[0], "최근 사업보고서/감사보고서 (DART)"),
@@ -901,18 +931,13 @@ function normalizeFlags(
   return out;
 }
 
-function forceNa(flags: LynchFlag[], indices: number[], comment: string): void {
-  for (const i of indices) {
-    if (flags[i]) {
-      flags[i].result = "NA";
-      flags[i].comment = comment;
-    }
-  }
-}
-
 // 코드가 산출한 체크리스트 지표의 result/comment로 해당 그린플래그를 덮어쓴다
 // (LLM 추정 대신 공시 기반 사실로 동기화 — 내부자/자사주).
-function syncFlagFromMetric(flags: LynchFlag[], idx: number, metric: LynchMetric): void {
+function syncFlagFromMetric(
+  flags: LynchFlag[],
+  idx: number,
+  metric: Pick<LynchMetric, "result" | "comment">,
+): void {
   if (!flags[idx]) return;
   flags[idx].result = metric.result;
   flags[idx].comment = metric.comment;
