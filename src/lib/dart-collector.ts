@@ -311,17 +311,25 @@ async function fetchInsider6m(
   buyCount: number;
   sellCount: number;
   asOf: Date | null;
-}> {
+} | null> {
+  // 반환 규약:
+  //  - 객체     : 정상 조회 완료(데이터 있음/없음 무관). 호출부에서 그대로 저장(NA 포함).
+  //  - null     : 수집 실패(타임아웃/네트워크/HTTP/JSON 파싱/DART 에러 status).
+  //               호출부에서 insider 컬럼 update를 건너뛰어 기존 값을 보존해야 함.
+  // 정상 조회했으나 6개월 내 유효 보고가 0건 → NA 저장용 빈 결과.
   const empty = {
     netBuy: null, voluntaryNetBuy: null, bulkGrantCount: 0,
     buyCount: 0, sellCount: 0, asOf: null,
   };
   const url = `${DART_BASE}/elestock.json?crtfc_key=${dartKey()}&corp_code=${dartCode}`;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-    if (!res.ok) return empty;
+    const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+    if (!res.ok) return null; // HTTP 오류 = 수집 실패 → skip
     const d: { status: string; list?: ElestockItem[] } = await res.json();
-    if (d.status !== "000" || !(d.list?.length)) return empty;
+    // DART status: "000"=정상, "013"=조회 데이터 없음(정상적 무데이터). 그 외=API 오류 → skip.
+    if (d.status === "013") return empty;
+    if (d.status !== "000") return null;
+    if (!(d.list?.length)) return empty;
 
     // 6개월 전 컷오프 (rcept_dt "YYYY-MM-DD" 문자열 비교)
     const cutoff = new Date();
@@ -366,7 +374,10 @@ async function fetchInsider6m(
       sellCount: sell,
       asOf: new Date(),
     };
-  } catch { return empty; }
+  } catch {
+    // AbortError(타임아웃)/네트워크/JSON 파싱 실패 = 수집 실패 → skip(기존 값 보존)
+    return null;
+  }
 }
 
 // ── 전 종목 재무 수집 ─────────────────────────────────────
@@ -486,6 +497,8 @@ export async function collectAllFinancials(
     // #6 내부자: 활성 종목(재무 수집 성공)에 한해 6개월 소유보고 집계 1회 호출.
     if (anyYear) {
       const ins = await fetchInsider6m(stock.dartCode).catch(() => null);
+      // ins === null → 수집 실패(타임아웃 등). insider 컬럼 update를 건너뛰어 기존 값 보존.
+      // 재무(stockFinancial)는 processYear에서 이미 즉시 upsert됨 → 영향 없음.
       if (ins) {
         await prisma.stock.update({
           where: { id: stock.id },
