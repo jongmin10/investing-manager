@@ -314,6 +314,56 @@ model LynchAnalysis {
   @@index([ticker])
 }
 
+// 관리자: 외부 API 헬스 상태 (API당 1행, upsert) — 규격 §4.1
+// apiKey 로 upsert. status 는 up | down | degraded | unknown.
+//  - up:       정상 응답
+//  - degraded: 응답은 하나 부분 문제(예: OpenRouter 크레딧 부족 402, 키/한도 경고)
+//  - down:     도달 실패/타임아웃/인증 실패
+//  - unknown:  점검 불가(키 미설정) 또는 추정 불가(OpenFIGI 이력 없음)
+model ExternalApiHealth {
+  id            String    @id @default(cuid())
+  apiKey        String    @unique // NAVER | DART | EDGAR | OPENFIGI | OPENROUTER | OECD
+  status        String // up | down | degraded | unknown
+  httpStatus    Int? // 마지막 체크 HTTP 코드
+  latencyMs     Int? // 응답시간(ms)
+  lastSuccessAt DateTime? // 마지막 성공(up) 시각
+  lastCheckedAt DateTime // 마지막 체크 시각
+  message       String? // 에러/비고
+}
+
+// 관리자: 수집 작업 실행 이력 (실행당 1행, append) — 규격 §4.2
+// 슬라이스형 수집(stocks·financials)은 잡 단위 집계 1행(§8-1). 보존 30일(§8-3).
+model CollectionRun {
+  id          String   @id @default(cuid())
+  job         String // stocks | financials | gurus | daily | refresh-universe | history
+  status      String // success | failed | partial
+  itemsOk     Int      @default(0) // 성공 건수
+  itemsFailed Int      @default(0) // 실패 건수
+  durationMs  Int      @default(0) // 소요시간(ms)
+  error       String? // 실패 사유(truncate ≤1000자)
+  startedAt   DateTime // 시작
+  finishedAt  DateTime // 종료
+
+  @@index([job, startedAt])
+}
+
+// 관리자: 외부 API 요청 로그 (요청당 1행) — 시스템이 호출한 모든 외부 API 요청 모니터링.
+// loggedFetch(src/lib/logged-fetch.ts)가 fire-and-forget 으로 적재. url 은 비밀 쿼리파라미터
+// (crtfc_key 등) 마스킹 후 저장. 보존 7일(적재 시 best-effort 정리, throttled).
+model ApiRequestLog {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now()) // Date/Time
+  apiKey         String? // NAVER | DART | EDGAR | OPENFIGI | OPENROUTER | OECD | (host)
+  method         String   @default("GET")
+  url            String // Request URL (비밀 파라미터 마스킹됨)
+  statusCode     Int? // Response Code (null = 네트워크 오류/타임아웃)
+  responseTimeMs Int // Response Time(ms)
+  ok             Boolean  @default(false)
+  error          String? // 네트워크 오류 사유(truncate ≤300자)
+
+  @@index([createdAt])
+}
+
 // 투자 일기
 model JournalEntry {
   id           String   @id @default(cuid())

@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { loggedFetch } from "./logged-fetch";
 
 const EDGAR_SUB  = "https://data.sec.gov/submissions";
 const EDGAR_ARC  = "https://www.sec.gov/Archives/edgar/data";
@@ -41,7 +42,7 @@ function xmlVal(xml: string, tag: string): string {
 async function fetchRecent13Fs(cik: string, count = 2): Promise<{ accession: string; reportDate: string }[]> {
   const padded = padCik(cik);
   try {
-    const res = await fetch(`${EDGAR_SUB}/CIK${padded}.json`, {
+    const res = await loggedFetch(`${EDGAR_SUB}/CIK${padded}.json`, {
       headers: EDGAR_HEADERS,
       signal: AbortSignal.timeout(15_000),
     });
@@ -71,7 +72,7 @@ async function findInfoTableUrl(cik: string, accession: string): Promise<string 
   const indexUrl  = `${EDGAR_ARC}/${cikNum}/${accFolder}/${accession}-index.htm`;
 
   try {
-    const res = await fetch(indexUrl, { headers: EDGAR_HEADERS, signal: AbortSignal.timeout(15_000) });
+    const res = await loggedFetch(indexUrl, { headers: EDGAR_HEADERS, signal: AbortSignal.timeout(15_000) });
     if (!res.ok) return null;
     const html = await res.text();
 
@@ -98,7 +99,7 @@ interface RawHolding { company: string; cusip: string; value: number; shares: nu
 
 async function fetchHoldings(xmlUrl: string): Promise<RawHolding[]> {
   try {
-    const res = await fetch(xmlUrl, { headers: EDGAR_HEADERS, signal: AbortSignal.timeout(30_000) });
+    const res = await loggedFetch(xmlUrl, { headers: EDGAR_HEADERS, signal: AbortSignal.timeout(30_000) });
     if (!res.ok) return [];
     let xml = await res.text();
 
@@ -127,7 +128,7 @@ async function mapCusips(cusips: string[]): Promise<Map<string, string>> {
   for (let i = 0; i < cusips.length; i += 10) {
     const batch = cusips.slice(i, i + 10);
     try {
-      const res = await fetch(FIGI_URL, {
+      const res = await loggedFetch(FIGI_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(batch.map((c) => ({ idType: "ID_CUSIP", idValue: c }))),
@@ -155,7 +156,7 @@ async function fetchXbrlAssets(cik: string): Promise<{
 } | null> {
   const padded = padCik(cik);
   try {
-    const res = await fetch(
+    const res = await loggedFetch(
       `https://data.sec.gov/api/xbrl/companyfacts/CIK${padded}.json`,
       { headers: EDGAR_HEADERS, signal: AbortSignal.timeout(20_000) },
     );

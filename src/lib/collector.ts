@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { loggedFetch } from "./logged-fetch";
 
 // 실시간 수집 대상 지표 — Yahoo Finance 심볼 매핑
 export const REALTIME_SYMBOLS = [
@@ -40,7 +41,7 @@ async function fetchQuote(yahoo: string): Promise<QuoteResult | null> {
   const encoded = encodeURIComponent(yahoo);
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=1d&includePrePost=false`;
 
-  const res = await fetch(url, {
+  const res = await loggedFetch(url, {
     headers: YF_HEADERS,
     cache: "no-store",
     signal: AbortSignal.timeout(8000),
@@ -140,7 +141,7 @@ async function fetchHistory(yahoo: string, dp: number): Promise<HistoryPoint[]> 
   const encoded = encodeURIComponent(yahoo);
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=3y&includePrePost=false`;
 
-  const res = await fetch(url, {
+  const res = await loggedFetch(url, {
     headers: YF_HEADERS,
     cache: "no-store",
     signal: AbortSignal.timeout(30000),

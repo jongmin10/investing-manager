@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { refreshStockUniverse } from "@/lib/universe";
 import { getBaseUrl, isAuthorizedCron, triggerNextSlice } from "@/lib/cron-self";
+import { recordCollectionRun } from "@/lib/collection-run";
 
 export const dynamic = "force-dynamic";
 // 유니버스 갱신만 단독 수행(약 ~36s 실측). Hobby 한도(60s) 안에서 안전.
@@ -21,6 +22,7 @@ export const maxDuration = 60;
  *   유니버스 갱신이 실패해도 기존 rank 로 수집을 진행하도록 트리거는 항상 수행한다.
  */
 async function run(req: NextRequest) {
+  const startedAt = new Date();
   const out: Record<string, unknown> = { ok: true };
 
   // 1. 시총 유니버스 갱신 (단독). 실패해도 기존 rank 로 수집 진행하므로 비치명.
@@ -39,6 +41,20 @@ async function run(req: NextRequest) {
   } catch (err) {
     out.chainError = String(err);
     console.error("[cron:refresh-universe] 수집 슬라이스 트리거 실패:", err);
+  }
+
+  // 계측(§5): 유니버스 갱신 = CollectionRun 1행. itemsOk = 갱신된 유니버스 종목 수(total).
+  // 갱신 실패(throw 또는 ok:false)는 itemsFailed=1·error 로 매핑. 집계 자체도 실패 격리.
+  try {
+    const u = out.universe as { ok?: boolean; total?: number; error?: string } | undefined;
+    const failed = Boolean(out.universeError) || u?.ok === false;
+    await recordCollectionRun("refresh-universe", startedAt, {
+      itemsOk: u?.ok ? u.total ?? 0 : 0,
+      itemsFailed: failed ? 1 : 0,
+      error: (out.universeError as string | undefined) ?? u?.error ?? null,
+    });
+  } catch (err) {
+    console.error("[cron:refresh-universe] 이력 기록 실패:", err);
   }
 
   out.runAt = new Date().toISOString();

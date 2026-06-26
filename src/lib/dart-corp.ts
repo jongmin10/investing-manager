@@ -1,5 +1,6 @@
 import AdmZip from "adm-zip";
 import { prisma } from "./prisma";
+import { loggedFetch } from "./logged-fetch";
 
 // DART 기업 고유번호(corp_code) 매핑.
 // 동적 유니버스로 신규 종목이 추가되면 dartCode가 비어 재무 수집이 불가하므로,
@@ -29,7 +30,7 @@ export async function mapMissingDartCodes(): Promise<{
   // corp_code 목록 ZIP 다운로드 → CORPCODE.xml 파싱
   let corpMap: Map<string, string>;
   try {
-    const res = await fetch(`${CORP_CODE_URL}?crtfc_key=${key}`, { signal: AbortSignal.timeout(30_000) });
+    const res = await loggedFetch(`${CORP_CODE_URL}?crtfc_key=${key}`, { signal: AbortSignal.timeout(30_000) });
     if (!res.ok) return { attempted: missing.length, mapped: 0, downloaded: false, error: `HTTP ${res.status}` };
     const buffer = Buffer.from(await res.arrayBuffer());
     const entry  = new AdmZip(buffer).getEntry("CORPCODE.xml");

@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { loggedFetch } from "./logged-fetch";
 
 // 네이버 금융 시가총액 순위 페이지를 스크랩해 시총 상위 N개 유니버스를 동적 구성한다.
 // 순위가 바뀌어도 수집 직전 자동 갱신되어 항상 최신 top-N을 추적한다.
@@ -32,7 +33,7 @@ interface ScrapedStock { code: string; name: string; market: "KOSPI" | "KOSDAQ";
 
 async function fetchMarketSumPage(sosok: "0" | "1", page: number): Promise<ScrapedStock[]> {
   const market = sosok === "0" ? "KOSPI" : "KOSDAQ";
-  const res = await fetch(
+  const res = await loggedFetch(
     `https://finance.naver.com/sise/sise_market_sum.naver?sosok=${sosok}&page=${page}`,
     { headers: NAVER_HEADERS, signal: AbortSignal.timeout(15_000) },
   );
