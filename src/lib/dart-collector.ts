@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import { mapMissingDartCodes } from "./dart-corp";
+import { loggedFetch } from "./logged-fetch";
 
 const DART_BASE  = "https://opendart.fss.or.kr/api";
 // 동시 처리할 종목 수.
@@ -166,7 +167,7 @@ async function fetchYearlyFinancials(dartCode: string, year: number): Promise<Da
   for (const fsDiv of ["CFS", "OFS"]) {
     const url = `${DART_BASE}/fnlttSinglAcnt.json?crtfc_key=${key}&corp_code=${dartCode}&bsns_year=${year}&reprt_code=11011&fs_div=${fsDiv}`;
     let res: Response;
-    try { res = await fetch(url, { signal: AbortSignal.timeout(15_000) }); } catch { continue; }
+    try { res = await loggedFetch(url, { signal: AbortSignal.timeout(15_000) }); } catch { continue; }
     if (!res.ok) continue;
     let data: { status: string; list?: DartItem[] };
     try { data = await res.json(); } catch { continue; }
@@ -186,7 +187,7 @@ async function fetchCash(dartCode: string, year: number): Promise<number | null>
   for (const fsDiv of ["CFS", "OFS"]) {
     const url = `${DART_BASE}/fnlttSinglAcntAll.json?crtfc_key=${key}&corp_code=${dartCode}&bsns_year=${year}&reprt_code=11011&fs_div=${fsDiv}`;
     let res: Response;
-    try { res = await fetch(url, { signal: AbortSignal.timeout(15_000) }); } catch { continue; }
+    try { res = await loggedFetch(url, { signal: AbortSignal.timeout(15_000) }); } catch { continue; }
     if (!res.ok) continue;
     let data: { status: string; list?: DartAllItem[] };
     try { data = await res.json(); } catch { continue; }
@@ -213,7 +214,7 @@ async function fetchCash(dartCode: string, year: number): Promise<number | null>
 async function fetchAlotMatter(dartCode: string, year: number): Promise<AlotItem[]> {
   const url = `${DART_BASE}/alotMatter.json?crtfc_key=${dartKey()}&corp_code=${dartCode}&bsns_year=${year}&reprt_code=11011`;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(12_000) });
+    const res = await loggedFetch(url, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return [];
     const d: { status: string; list?: AlotItem[] } = await res.json();
     return d.status === "000" ? (d.list ?? []) : [];
@@ -224,7 +225,7 @@ async function fetchAlotMatter(dartCode: string, year: number): Promise<AlotItem
 async function fetchShares(dartCode: string, year: number): Promise<number | null> {
   const url = `${DART_BASE}/stockTotqySttus.json?crtfc_key=${dartKey()}&corp_code=${dartCode}&bsns_year=${year}&reprt_code=11011`;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(12_000) });
+    const res = await loggedFetch(url, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return null;
     const d: { status: string; list?: ShareItem[] } = await res.json();
     if (d.status !== "000") return null;
@@ -248,7 +249,7 @@ async function fetchTreasury(
   const empty = { acqs: null, dsps: null, held: null };
   const url = `${DART_BASE}/tesstkAcqsDspsSttus.json?crtfc_key=${dartKey()}&corp_code=${dartCode}&bsns_year=${year}&reprt_code=11011`;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(12_000) });
+    const res = await loggedFetch(url, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return empty;
     const d: { status: string; list?: TreasuryItem[] } = await res.json();
     if (d.status !== "000" || !(d.list?.length)) return empty;
@@ -323,7 +324,7 @@ async function fetchInsider6m(
   };
   const url = `${DART_BASE}/elestock.json?crtfc_key=${dartKey()}&corp_code=${dartCode}`;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+    const res = await loggedFetch(url, { signal: AbortSignal.timeout(30_000) });
     if (!res.ok) return null; // HTTP 오류 = 수집 실패 → skip
     const d: { status: string; list?: ElestockItem[] } = await res.json();
     // DART status: "000"=정상, "013"=조회 데이터 없음(정상적 무데이터). 그 외=API 오류 → skip.

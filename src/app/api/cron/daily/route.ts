@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { collectRealtimeData } from "@/lib/collector";
 import { getBaseUrl, isAuthorizedCron, triggerNextSlice } from "@/lib/cron-self";
+import { recordCollectionRun } from "@/lib/collection-run";
 
 export const dynamic = "force-dynamic";
 // 가벼운 오케스트레이터(지표+리포트+슬라이스 트리거)만 수행하므로 짧게 끝난다.
@@ -26,14 +27,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const startedAt = new Date();
   const results: Record<string, unknown> = {};
   const baseUrl = getBaseUrl(req);
+  let indicatorsOk = 0;
+  let indicatorsFailed = 0;
 
   // 1. 경제지표 수집 (Yahoo 실시간, 경량)
   try {
     const indicatorResult = await collectRealtimeData();
-    results.indicators = { updated: indicatorResult.updated.length, failed: indicatorResult.failed.length };
-    console.log(`[cron] 경제지표 업데이트: ${indicatorResult.updated.length}개`);
+    indicatorsOk = indicatorResult.updated.length;
+    indicatorsFailed = indicatorResult.failed.length;
+    results.indicators = { updated: indicatorsOk, failed: indicatorsFailed };
+    console.log(`[cron] 경제지표 업데이트: ${indicatorsOk}개`);
   } catch (err) {
     results.indicatorsError = String(err);
     console.error("[cron] 경제지표 수집 오류:", err);
@@ -76,6 +82,18 @@ export async function GET(req: NextRequest) {
 
   // 연결 살아있는지 가벼운 확인
   await prisma.$executeRaw`SELECT 1`.catch(() => {});
+
+  // 계측(§5): 오케스트레이터가 "직접" 수행한 작업(경제지표 수집)을 1행으로 기록한다.
+  // 다운스트림 슬라이스 잡(collect-stocks/collect-financials)은 각자 별도 1행을 남기므로
+  // 여기서 중복 집계하지 않는다. 트리거/리포트 단계의 에러는 error 필드에 합쳐 관측성만 남긴다.
+  const errParts = ["indicatorsError", "reportError", "stocksError", "financialsError"]
+    .map((k) => results[k])
+    .filter((v): v is string => typeof v === "string");
+  await recordCollectionRun("daily", startedAt, {
+    itemsOk: indicatorsOk,
+    itemsFailed: indicatorsFailed,
+    error: errParts.length ? errParts.join("; ") : null,
+  }).catch((e) => console.error("[cron:daily] 이력 기록 실패:", e));
 
   return NextResponse.json({ ok: true, runAt: new Date().toISOString(), results });
 }

@@ -2,6 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { collectAllStocks } from "@/lib/stock-collector";
 import { getBaseUrl, isAuthorizedCron, triggerNextSlice } from "@/lib/cron-self";
+import { recordCollectionRun } from "@/lib/collection-run";
+
+/**
+ * 슬라이스 간 전달되는 누산기(§8-1 잡 단위 집계 1행).
+ * offset 0 슬라이스에서 시작값을 만들고, 각 슬라이스가 자기 결과를 더해 body 로 넘긴다.
+ * 마지막 슬라이스(hasMore=false)에서만 누적 totals 로 CollectionRun 1행을 기록한다.
+ */
+interface SliceAcc {
+  startedAt: number; // 잡 시작 epoch ms (offset 0 기준)
+  ok: number; // 누적 성공(updated) 건수
+  failed: number; // 누적 실패 건수
+  error: string | null; // 첫 슬라이스 수집 에러(있으면 partial/failed)
+}
+
+function freshAcc(): SliceAcc {
+  return { startedAt: Date.now(), ok: 0, failed: 0, error: null };
+}
 
 // 슬라이스당 처리 종목 수.
 // PARALLEL=10, BATCH_DELAY=600ms 기준 한 슬라이스(=SLICE/10 서브배치)는
@@ -30,8 +47,11 @@ export const maxDuration = 60;
  * 슬라이스를 500 으로 죽이지 않고 다음 슬라이스 트리거를 보장해 체인 생존을 유지하며,
  * 실패 원인을 응답/로그에 남겨(collectError/chainError) 관측 가능하게 한다.
  */
-async function run(req: NextRequest, offset: number) {
+async function run(req: NextRequest, offset: number, acc: SliceAcc) {
   const out: Record<string, unknown> = { ok: true, offset, limit: SLICE };
+  let sliceOk = 0;
+  let sliceFailed = 0;
+  let sliceError: string | null = null;
 
   // 1. 주가 수집 — 실패해도 다음 슬라이스 체이닝은 계속한다.
   try {
@@ -40,13 +60,25 @@ async function run(req: NextRequest, offset: number) {
     out.updated = result.updated;
     out.skipped = result.skipped;
     out.failed = result.failed.length;
+    sliceOk = result.updated;
+    sliceFailed = result.failed.length;
   } catch (err) {
     out.ok = false;
     out.collectError = String(err);
+    sliceError = String(err);
     console.error(`[cron:collect-stocks] 슬라이스 수집 실패 offset=${offset}:`, err);
   }
 
+  // 누산기 갱신(이 슬라이스 결과 반영) — 체이닝/기록 단계에서 사용.
+  const nextAcc: SliceAcc = {
+    startedAt: acc.startedAt,
+    ok: acc.ok + sliceOk,
+    failed: acc.failed + sliceFailed,
+    error: acc.error ?? sliceError,
+  };
+
   // 2. 다음 슬라이스 체이닝 — 현재 슬라이스 성패와 무관하게 남은 종목이 있으면 진행.
+  //    마지막 슬라이스(hasMore=false)에서만 잡 단위 집계 1행을 기록(§8-1).
   try {
     const rankedCount = await prisma.stock.count({ where: { rank: { not: null } } });
     const totalStocks = rankedCount > 0 ? rankedCount : await prisma.stock.count();
@@ -56,7 +88,17 @@ async function run(req: NextRequest, offset: number) {
     out.nextOffset = hasMore ? nextOffset : null;
 
     if (hasMore) {
-      await triggerNextSlice(getBaseUrl(req), "/api/cron/collect-stocks", { offset: nextOffset });
+      await triggerNextSlice(getBaseUrl(req), "/api/cron/collect-stocks", {
+        offset: nextOffset,
+        _acc: nextAcc,
+      });
+    } else {
+      await recordCollectionRun("stocks", new Date(nextAcc.startedAt), {
+        itemsOk: nextAcc.ok,
+        itemsFailed: nextAcc.failed,
+        error: nextAcc.error,
+      });
+      out.runRecorded = true;
     }
   } catch (err) {
     out.chainError = String(err);
@@ -71,8 +113,8 @@ export async function GET(req: NextRequest) {
   if (!isAuthorizedCron(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  // Vercel Cron 진입점 = 항상 offset 0 부터
-  const out = await run(req, 0);
+  // Vercel Cron 진입점 = 항상 offset 0 부터 (새 누산기 시작)
+  const out = await run(req, 0, freshAcc());
   return NextResponse.json(out);
 }
 
@@ -80,8 +122,10 @@ export async function POST(req: NextRequest) {
   if (!isAuthorizedCron(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const body = (await req.json().catch(() => ({}))) as { offset?: number };
+  const body = (await req.json().catch(() => ({}))) as { offset?: number; _acc?: SliceAcc };
   const offset = Math.max(0, body.offset ?? 0);
-  const out = await run(req, offset);
+  // _acc 없으면(외부/유니버스 트리거의 offset 0) 새 누산기 시작.
+  const acc = body._acc ?? freshAcc();
+  const out = await run(req, offset, acc);
   return NextResponse.json(out);
 }

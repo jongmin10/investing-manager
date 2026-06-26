@@ -29,7 +29,15 @@ export default function MobileNav() {
   const [moreOpen, setMoreOpen] = useState(false);
   const { data: session, status } = useSession();
 
-  const isMoreActive = MORE_ITEMS.some(({ href }) =>
+  // 관리자에게만 "API 상태" 항목 노출
+  const allMoreItems = [
+    ...MORE_ITEMS,
+    ...(session?.user?.isAdmin
+      ? [{ href: "/admin/api-status", icon: "⚙️", label: "API 상태" }]
+      : []),
+  ];
+
+  const isMoreActive = allMoreItems.some(({ href }) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href)
   );
 
@@ -46,7 +54,7 @@ export default function MobileNav() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="grid grid-cols-4 p-3 gap-2">
-              {MORE_ITEMS.map(({ href, icon, label }) => {
+              {allMoreItems.map(({ href, icon, label }) => {
                 const isActive =
                   href === "/" ? pathname === "/" : pathname.startsWith(href);
                 return (

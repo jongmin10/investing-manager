@@ -1,5 +1,7 @@
 import { prisma } from "./prisma";
 import { LYNCH_POLICY } from "./lynch-policy";
+import { recordApiHealthObservation } from "./api-health";
+import { loggedFetch } from "./logged-fetch";
 import { resolveLynchModel, type LynchModelOption } from "./lynch-models";
 import type {
   LynchResult,
@@ -738,7 +740,10 @@ ${ctx.facts}
 }
 
 // LLM 출력 토큰 상한 (선예약 비용·잘림 트레이드오프 — 위 max_tokens 주석 참고).
-const LLM_MAX_TOKENS = 1300;
+// 1300 은 데이터가 풍부한 종목(예: 005380 현대차)에서 verdict·플래그 코멘트가 길어지면
+// finish_reason=length 로 잘려 JSON 파싱이 실패했다(실측 completion=1300 정확히 상한 도달).
+// 2000 으로 상향해 헤드룸 확보(잘림 방지). 크레딧 여유는 충분(콜당 ~$0.009).
+const LLM_MAX_TOKENS = 2000;
 
 // LLM 호출 결과 — 성공 시 raw, 실패 시 사용자에게 보일 명확한 사유.
 type LlmOutcome = { ok: true; raw: LlmRaw } | { ok: false; reason: string };
@@ -778,8 +783,9 @@ async function callLlm(ctx: StockContext, model: LynchModelOption): Promise<LlmO
   for (let attempt = 0; attempt < 2; attempt++) {
     const remaining = LLM_BUDGET_MS - (Date.now() - startedAt);
     if (remaining < 5_000) break; // 남은 예산 부족 → 무의미한 재시도 포기
+    const callStart = Date.now();
     try {
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      const res = await loggedFetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -787,6 +793,17 @@ async function callLlm(ctx: StockContext, model: LynchModelOption): Promise<LlmO
         },
         body,
         signal: AbortSignal.timeout(remaining),
+      });
+      const latencyMs = Date.now() - callStart;
+      // 실호출 관측을 API 헬스에 반영 — 린치 분석의 OpenRouter 사용을 대시보드에 노출.
+      // 402(크레딧)·5xx 는 degraded, 401/403 은 down, 그 외 응답은 up(성공 도달).
+      void recordApiHealthObservation({
+        apiKey: "OPENROUTER",
+        status: res.ok ? "up" : res.status === 401 || res.status === 403 ? "down" : "degraded",
+        httpStatus: res.status,
+        latencyMs,
+        message: res.ok ? `린치 분석 호출 성공 (${model.label})` : `린치 분석 호출 HTTP ${res.status}`,
+        ok: res.ok,
       });
       if (!res.ok) {
         // 402(크레딧 부족)·401(인증)은 재시도해도 동일 → 명확한 사유로 즉시 종료.
@@ -805,14 +822,33 @@ async function callLlm(ctx: StockContext, model: LynchModelOption): Promise<LlmO
       }
       const json = await res.json();
       const text: string = json.choices?.[0]?.message?.content ?? "";
+      const finishReason = json.choices?.[0]?.finish_reason;
       const match = text.match(/\{[\s\S]*\}/);
-      if (!match) {
-        lastReason = "LLM 응답에서 JSON을 추출하지 못함 (응답 잘림/형식 오류).";
+      // finish_reason=length 면 max_tokens 상한에서 출력이 잘린 것 — 불완전 JSON 이 되어
+      // 파싱이 실패한다. 사유를 구체화해 관측 가능하게 한다(LLM_MAX_TOKENS 상향 신호).
+      if (!match || finishReason === "length") {
+        lastReason =
+          finishReason === "length"
+            ? "LLM 응답이 토큰 상한에서 잘림 (출력 길이 초과)."
+            : "LLM 응답에서 JSON을 추출하지 못함 (형식 오류).";
         continue;
       }
-      return { ok: true, raw: JSON.parse(match[0]) as LlmRaw };
+      try {
+        return { ok: true, raw: JSON.parse(match[0]) as LlmRaw };
+      } catch {
+        lastReason = "LLM 응답 JSON 파싱 실패 (응답 잘림/형식 오류).";
+        continue;
+      }
     } catch {
-      // 타임아웃/파싱 오류 → 재시도
+      // 네트워크 오류/타임아웃 — down 으로 관측 기록(도달 실패).
+      void recordApiHealthObservation({
+        apiKey: "OPENROUTER",
+        status: "down",
+        httpStatus: null,
+        latencyMs: Date.now() - callStart,
+        message: "린치 분석 호출 실패 (타임아웃/네트워크).",
+        ok: false,
+      });
       lastReason = "LLM 응답 파싱 실패 (타임아웃/형식 오류).";
     }
   }

@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { loggedFetch } from "./logged-fetch";
 
 const TYPES = ["KOSPI", "KOSDAQ", "KRW_USD", "SP500", "VIX", "US_TREASURY_10Y"] as const;
 
@@ -61,7 +62,7 @@ async function generateAiSummary(data: Record<string, { value: number | null; ch
 {"summaryKr":"...","summaryUs":"...","insightDcIrp":"..."}`;
 
   try {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const res = await loggedFetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${apiKey}`,

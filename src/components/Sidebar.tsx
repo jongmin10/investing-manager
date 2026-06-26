@@ -106,6 +106,27 @@ export default function Sidebar() {
         })}
       </nav>
 
+      {/* 관리자 섹션 — isAdmin 인 경우에만 표시 */}
+      {session?.user?.isAdmin && (
+        <div className="px-3 pb-2">
+          <p className="text-[10px] font-semibold text-blue-400/70 uppercase tracking-widest px-3 mb-1">관리자</p>
+          <Link
+            href="/admin/api-status"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150 ${
+              pathname === "/admin/api-status"
+                ? "bg-blue-500 text-white font-semibold shadow-sm"
+                : "text-blue-900 hover:bg-blue-100 hover:text-blue-700"
+            }`}
+          >
+            <span className="text-base leading-none">⚙️</span>
+            <span className="flex-1 truncate">API 상태</span>
+            {pathname === "/admin/api-status" && (
+              <span className="w-1.5 h-1.5 rounded-full bg-white/70 flex-shrink-0" />
+            )}
+          </Link>
+        </div>
+      )}
+
       {/* 하단 유저 영역 */}
       <div className="px-4 py-4 border-t border-blue-100">
         {status === "loading" ? (

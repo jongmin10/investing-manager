@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import { kstDateStr, kstDayRange } from "./kst";
+import { loggedFetch } from "./logged-fetch";
 
 const YF_HEADERS = {
   "User-Agent":
@@ -51,7 +52,7 @@ async function fetchNaverValuation(code: string): Promise<{
 }> {
   const empty = { per: null, cnsPer: null, cnsEps: null, pbr: null, dividendYield: null, sector: null };
   try {
-    const res = await fetch(`https://finance.naver.com/item/main.naver?code=${code}`, {
+    const res = await loggedFetch(`https://finance.naver.com/item/main.naver?code=${code}`, {
       headers: NAVER_HEADERS,
       signal: AbortSignal.timeout(10_000),
     });
@@ -82,7 +83,7 @@ async function fetchNaverValuation(code: string): Promise<{
 // '언더더레이더(기관 보유율<5%)'의 대용 지표로 사용. trend는 최신순 배열, [0].foreignerHoldRatio = "47.41%".
 async function fetchNaverForeignHoldRatio(code: string): Promise<number | null> {
   try {
-    const res = await fetch(`https://m.stock.naver.com/api/stock/${code}/trend`, {
+    const res = await loggedFetch(`https://m.stock.naver.com/api/stock/${code}/trend`, {
       headers: { "User-Agent": NAVER_HEADERS["User-Agent"], "Referer": "https://m.stock.naver.com/" },
       cache: "no-store",
       signal: AbortSignal.timeout(10_000),

@@ -1,4 +1,9 @@
 export async function register() {
+  // 기동 시 자동수집은 Supabase 풀(Transaction 모드)을 점유해 부팅 직후 1~2분간
+  // 로그인 등 다른 쿼리를 60초 타임아웃(ECHECKOUTTIMEOUT)으로 막는다. 로컬 개발에선
+  // DISABLE_STARTUP_COLLECTION=true 로 꺼서 로그인을 안정화한다(운영은 미설정 → 동작 유지).
+  if (process.env.DISABLE_STARTUP_COLLECTION === "true") return;
+
   if (process.env.NEXT_RUNTIME === "nodejs") {
     // 경제지표 수집 (비동기 — 첫 요청 블로킹 방지)
     import("./lib/collector").then(({ collectRealtimeData }) =>

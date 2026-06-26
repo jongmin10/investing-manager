@@ -3,6 +3,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import { prisma } from "@/lib/prisma";
+import { isAdminEmail } from "@/lib/admin";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -36,12 +37,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     async jwt({ token, user }) {
-      if (user) token.id = user.id;
+      if (user) {
+        token.id = user.id;
+        // isAdmin 은 로그인 시점 ADMIN_EMAILS 기준으로 JWT 에 저장.
+        // UI 표시용(사이드바 관리자 섹션)이며, 보안 경계는 서버사이드 isAdminEmail 재검사로 보장.
+        (token as Record<string, unknown>)["isAdmin"] = isAdminEmail(user.email);
+      }
       return token;
     },
     async session({ session, token }) {
       if (session.user && token.id) {
         session.user.id = token.id as string;
+      }
+      if (session.user) {
+        session.user.isAdmin = ((token as Record<string, unknown>)["isAdmin"] as boolean) ?? false;
       }
       return session;
     },
