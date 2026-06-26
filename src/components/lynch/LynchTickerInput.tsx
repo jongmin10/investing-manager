@@ -207,16 +207,16 @@ export default function LynchTickerInput({
               id="lynch-ticker"
               ref={inputRef}
               type="text"
-              inputMode="numeric"
+              inputMode="text"
               autoComplete="off"
-              maxLength={8}
+              maxLength={20}
               value={value}
               onChange={handleChange}
               onKeyDown={handleKeyDown}
               onFocus={() => value.length >= 2 && updateSuggestions(value)}
               disabled={disabled}
-              placeholder="종목코드 입력 (예: 005930)"
-              aria-label="한국 종목코드 6자리"
+              placeholder="종목코드·회사명 입력 (예: 005930, 삼성전자)"
+              aria-label="한국 종목코드 6자리 또는 회사명"
               aria-invalid={!!error}
               aria-describedby={error ? "lynch-ticker-error" : warning ? "lynch-ticker-warning" : undefined}
               aria-autocomplete="list"
