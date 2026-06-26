@@ -281,15 +281,41 @@ async function fetchTreasury(
   } catch { return empty; }
 }
 
+// 같은 날(rcept_dt) 일괄 매수 보고를 '일괄부여(우리사주·스톡그랜트 등) 추정'으로 분리하는
+// 임계값. 같은 날 매수(증가) 보고가 이 건수 이상이면, 그 날의 증가분 전체를 비자발적
+// 일괄부여로 추정해 자발적 순매수에서 제외한다.
+// 근거: 우리사주 배정·스톡그랜트는 동일일자에 다수 임직원에게 일괄 보고되어 같은 rcept_dt에
+// 매수 보고가 수십~수백 건 몰린다(삼성전자 dry-run: 2026-02-02 매수보고 810건). 이는 경영진의
+// 자발적 신뢰 매수(린치가 보는 호재 신호)가 아니라 보상·복지성 비자발 취득이므로, 자발적
+// 순매수 판정에서 제외해 대형주 위양성 그린(PASS)을 방지한다. 임계 5는 자발적 개별 임원 매수가
+// 같은 날 5건 이상 몰릴 가능성은 낮다는 보수적 디폴트(의심스러우면 제외 → 그린 강등).
+const BULK_GRANT_MIN_REPORTS = 5;
+
 /**
  * elestock: 임원·주요주주 소유보고 (#6 내부자 매수 vs 매도, 최근 6개월).
  * 연도 파라미터 없음 → 전체 이력 반환. rcept_dt가 최근 6개월 이내인 건만 필터해
  * sp_stock_lmp_irds_cnt(증감수량, 부호 유지)를 합산. 양수=매수, 음수=매도.
+ *
+ * 이중 집계:
+ *  - netBuy(총 순매수): 6개월 내 모든 유효 증감 합(기존 동작 보존, 일괄부여 포함).
+ *  - voluntaryNetBuy(자발적 순매수): 같은 날 매수 보고가 BULK_GRANT_MIN_REPORTS 이상인 날의
+ *    증가분 전체를 일괄부여 추정으로 제외한 순매수. 린치 판정은 이 값을 기준으로 한다.
+ *  - bulkGrantCount: 자발에서 제외된 일괄부여 추정 보고 건수(코멘트 근거용).
  */
 async function fetchInsider6m(
   dartCode: string,
-): Promise<{ netBuy: number | null; buyCount: number; sellCount: number; asOf: Date | null }> {
-  const empty = { netBuy: null, buyCount: 0, sellCount: 0, asOf: null };
+): Promise<{
+  netBuy: number | null;
+  voluntaryNetBuy: number | null;
+  bulkGrantCount: number;
+  buyCount: number;
+  sellCount: number;
+  asOf: Date | null;
+}> {
+  const empty = {
+    netBuy: null, voluntaryNetBuy: null, bulkGrantCount: 0,
+    buyCount: 0, sellCount: 0, asOf: null,
+  };
   const url = `${DART_BASE}/elestock.json?crtfc_key=${dartKey()}&corp_code=${dartCode}`;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
@@ -302,16 +328,44 @@ async function fetchInsider6m(
     cutoff.setMonth(cutoff.getMonth() - 6);
     const cutoffStr = cutoff.toISOString().slice(0, 10);
 
+    // 1) 6개월 윈도우 내 유효 건을 rcept_dt별로 그룹핑하며 총 합계 산출.
     let net = 0, buy = 0, sell = 0, any = false;
+    const buyQtyByDate = new Map<string, number[]>(); // 날짜 → 매수(증가) 증감수량 목록
     for (const r of d.list) {
-      if (!r.rcept_dt || normalizeDartDate(r.rcept_dt) < cutoffStr) continue;
+      if (!r.rcept_dt) continue;
+      const date = normalizeDartDate(r.rcept_dt);
+      if (date < cutoffStr) continue;
       const q = toQty(r.sp_stock_lmp_irds_cnt);
       if (q == null || q === 0) continue;
       any = true;
       net += q;
-      if (q > 0) buy++; else sell++;
+      if (q > 0) {
+        buy++;
+        (buyQtyByDate.get(date) ?? buyQtyByDate.set(date, []).get(date)!).push(q);
+      } else {
+        sell++;
+      }
     }
-    return any ? { netBuy: net, buyCount: buy, sellCount: sell, asOf: new Date() } : empty;
+    if (!any) return empty;
+
+    // 2) 같은 날 매수 보고 ≥ BULK_GRANT_MIN_REPORTS → 그 날 증가분 전체를 일괄부여로 분류·제외.
+    let bulkGrantQty = 0, bulkGrantCount = 0;
+    for (const qs of buyQtyByDate.values()) {
+      if (qs.length >= BULK_GRANT_MIN_REPORTS) {
+        bulkGrantCount += qs.length;
+        for (const q of qs) bulkGrantQty += q;
+      }
+    }
+    const voluntaryNet = net - bulkGrantQty;
+
+    return {
+      netBuy: net,
+      voluntaryNetBuy: voluntaryNet,
+      bulkGrantCount,
+      buyCount: buy,
+      sellCount: sell,
+      asOf: new Date(),
+    };
   } catch { return empty; }
 }
 
@@ -436,10 +490,12 @@ export async function collectAllFinancials(
         await prisma.stock.update({
           where: { id: stock.id },
           data: {
-            insiderNetBuy6m:  ins.netBuy,
-            insiderBuyCount:  ins.buyCount,
-            insiderSellCount: ins.sellCount,
-            insiderAsOf:      ins.asOf,
+            insiderNetBuy6m:          ins.netBuy,
+            insiderVoluntaryNetBuy6m: ins.voluntaryNetBuy,
+            insiderBulkGrantCount:    ins.bulkGrantCount,
+            insiderBuyCount:          ins.buyCount,
+            insiderSellCount:         ins.sellCount,
+            insiderAsOf:              ins.asOf,
           },
         }).catch(() => {});
       }

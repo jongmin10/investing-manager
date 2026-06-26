@@ -169,9 +169,13 @@ model Stock {
   marketCap   Float?                      // 시가총액(억) — 동적 유니버스 갱신 시 기록
   rank        Int?                        // 시총 순위 (1=최상위). 수집 대상/정렬 기준
   // Phase 3 (내부자 거래): 최근 6개월 임원·주요주주 소유보고 집계 (시점성 — elestock)
-  insiderNetBuy6m  Float?                 // 6M 순매수 수량 (주, 음수=순매도) — sp_stock_lmp_irds_cnt 합
-  insiderBuyCount  Int?                   // 6M 매수(증가) 보고 건수
-  insiderSellCount Int?                   // 6M 매도(감소) 보고 건수
+  insiderNetBuy6m  Float?                 // 6M 총 순매수 수량 (주, 음수=순매도) — sp_stock_lmp_irds_cnt 합 (일괄부여 포함)
+  // 자발적 순매수: 같은 날 일괄부여 추정(우리사주·스톡그랜트 등) 증가분을 제외한 순매수.
+  // 린치 판정(내부자 매수)은 이 값을 기준으로 산출 — 대형주 위양성 그린 방지.
+  insiderVoluntaryNetBuy6m Float?         // 6M 자발적 순매수 수량 (주, 일괄부여 추정 제외)
+  insiderBulkGrantCount    Int?           // 자발에서 제외된 일괄부여 추정 보고 건수 (코멘트 근거용)
+  insiderBuyCount  Int?                   // 6M 매수(증가) 보고 건수 (총)
+  insiderSellCount Int?                   // 6M 매도(감소) 보고 건수 (총)
   insiderAsOf      DateTime?              // 내부자 집계 기준 시각
 
   snapshots  StockSnapshot[]

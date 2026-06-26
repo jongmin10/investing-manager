@@ -385,9 +385,19 @@ function computeOpMarginTrend(opMargin: number | null, opGrowth: number | null, 
 }
 
 // #6 내부자 매수 vs 매도 (최근 6개월) — elestock 임원·주요주주 소유보고 집계.
-// netBuy = 증감수량 합(주, 음수=순매도). 매수/매도 건수 동반. 데이터 없으면 NA.
+// 판정 기준은 '자발적 순매수'(voluntaryNetBuy): 같은 날 일괄부여(우리사주·스톡그랜트 등
+// 비자발 취득)로 추정되는 증가분을 제외한 값. 대형주에서 일괄부여 매수가 만드는 위양성
+// 그린(PASS)을 방지한다. 총 순매수(netBuy)와 일괄부여 제외 건수(bulkGrantCount)는 표시·코멘트
+// 근거로 유지해 판정 근거를 정직하게 드러낸다.
+//
+// 폴백: voluntaryNetBuy가 null인 레거시 종목(자발 분리 전 수집분)은 총 순매수(netBuy)로
+// 폴백하되, 코멘트에 "자발 분리 전 데이터"임을 명시하고 표시 라벨에서 '자발' 수식을 뗀다.
+// (voluntary·net 모두 null이면 NA). 폴백을 NA로 두지 않는 이유: 레거시 종목이 재수집 전까지
+// 통째로 NA가 되면 회귀처럼 보이고 기존 정보를 버리게 되므로, 보수적으로 기존 신호를 유지한다.
 function computeInsiderTrading(
-  netBuy: number | null,
+  netBuy: number | null,            // 총 순매수 (표시·근거용, 일괄부여 포함)
+  voluntaryNetBuy: number | null,   // 자발적 순매수 (판정 기준)
+  bulkGrantCount: number | null,    // 자발에서 제외된 일괄부여 추정 보고 건수
   buyCount: number | null,
   sellCount: number | null,
   asOf: Date | null,
@@ -397,23 +407,37 @@ function computeInsiderTrading(
   let result: LynchMetric["result"] = "NA";
   let comment: string;
 
-  if (asOf != null && netBuy != null && Number.isFinite(netBuy)) {
-    numericValue = netBuy;
+  // 자발 값이 있으면 판정 기준으로 사용, 없으면(레거시) 총 순매수로 폴백.
+  const usingFallback = voluntaryNetBuy == null && netBuy != null;
+  const basis = voluntaryNetBuy != null ? voluntaryNetBuy : netBuy;
+
+  if (asOf != null && basis != null && Number.isFinite(basis)) {
+    numericValue = basis;
     const buys = buyCount ?? 0;
     const sells = sellCount ?? 0;
+    const bulk = bulkGrantCount ?? 0;
     const cnt = `(매수 ${buys}건 / 매도 ${sells}건)`;
-    if (netBuy > 0) {
-      value = `순매수 +${netBuy.toLocaleString()}주`;
+    // 판정 근거: 총 순매수 대비 일괄부여 제외 내역. 폴백 시엔 자발 데이터 부재를 표시.
+    const basisDesc = usingFallback
+      ? "자발 분리 전 데이터 — 총 순매수 기준"
+      : bulk > 0 && netBuy != null
+        ? `총 순매수 ${netBuy.toLocaleString()}주 중 일괄부여 추정 ${bulk}건 제외 → 자발 순매수 ${basis.toLocaleString()}주`
+        : `자발 순매수 ${basis.toLocaleString()}주(일괄부여 없음)`;
+    // 폴백 시엔 '자발' 수식을 떼어 오해 방지.
+    const kind = usingFallback ? "순" : "자발 순";
+
+    if (basis > 0) {
+      value = `${kind}매수 +${basis.toLocaleString()}주`;
       result = "PASS";
-      comment = `최근 6개월 내부자 순매수 ${netBuy.toLocaleString()}주 ${cnt} — 내부자 매수 우위(린치 호재). 단 스톡옵션 행사·상여 등 비자발적 취득 포함 가능 — 건수와 병행 판단.`;
-    } else if (netBuy < 0) {
-      value = `순매도 ${netBuy.toLocaleString()}주`;
+      comment = `최근 6개월 내부자 ${kind}매수 우위(린치 호재). ${basisDesc} ${cnt}.`;
+    } else if (basis < 0) {
+      value = `${kind}매도 ${basis.toLocaleString()}주`;
       result = "FAIL";
-      comment = `최근 6개월 내부자 순매도 ${Math.abs(netBuy).toLocaleString()}주 ${cnt} — 순매도 우위.`;
+      comment = `최근 6개월 내부자 ${kind}매도 우위. ${basisDesc} ${cnt}.`;
     } else {
-      value = "순변동 0주";
+      value = `${kind}변동 0주`;
       result = "NA";
-      comment = `최근 6개월 내부자 매수·매도 상쇄(순변동 0) ${cnt} — 방향성 불명확.`;
+      comment = `최근 6개월 내부자 ${kind}변동 0 — 방향성 불명확. ${basisDesc} ${cnt}.`;
     }
   } else {
     comment = "최근 6개월 임원·주요주주 소유보고 없음 또는 미수집.";
@@ -586,6 +610,8 @@ async function buildStockContext(ticker: string): Promise<
   // #6 내부자 매수 vs 매도 (6M) — Stock의 elestock 집계 (시점성)
   const insiderTrading = computeInsiderTrading(
     stock.insiderNetBuy6m ?? null,
+    stock.insiderVoluntaryNetBuy6m ?? null,
+    stock.insiderBulkGrantCount ?? null,
     stock.insiderBuyCount ?? null,
     stock.insiderSellCount ?? null,
     stock.insiderAsOf ?? null,
