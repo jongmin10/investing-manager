@@ -59,6 +59,15 @@ claude-dev.ps1
 /pw-*.mjs
 /playwright-screenshots/
 
+# playwright e2e test artifacts
+/test-results/
+/playwright-report/
+/e2e/.auth/
+
 # local dev server artifacts
 /dev-server.log
 /dev-server.pid
+
+# local dev scratch files
+/cdev.sh
+/elestock_sample.json

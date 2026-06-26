@@ -10,7 +10,10 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:etf": "tsx prisma/seed-etf.ts",
     "index:backfill": "tsx scripts/backfill-index-history.ts",
-    "etf:recalc": "node scripts/recalc-etf-returns.mjs"
+    "etf:recalc": "node scripts/recalc-etf-returns.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -30,6 +33,7 @@
     "tsx": "^4.22.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/adm-zip": "^0.5.8",
     "@types/node": "^20",
