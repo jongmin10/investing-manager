@@ -21,7 +21,7 @@ export default async function AdminUsersPage() {
   }
 
   const usersRaw = await prisma.user.findMany({
-    select: { id: true, email: true, name: true, createdAt: true, lastLoginAt: true },
+    select: { id: true, email: true, name: true, createdAt: true, lastLoginAt: true, loginCount: true },
     orderBy: { createdAt: "desc" },
   });
 
@@ -31,6 +31,7 @@ export default async function AdminUsersPage() {
     name: u.name,
     createdAt: u.createdAt.toISOString(),
     lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
+    loginCount: u.loginCount,
   }));
 
   return <UsersTable initialUsers={users} />;

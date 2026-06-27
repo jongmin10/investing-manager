@@ -17,7 +17,7 @@ export async function GET() {
   }
 
   const users = await prisma.user.findMany({
-    select: { id: true, email: true, name: true, createdAt: true, lastLoginAt: true },
+    select: { id: true, email: true, name: true, createdAt: true, lastLoginAt: true, loginCount: true },
     orderBy: { createdAt: "desc" },
   });
 
@@ -28,6 +28,7 @@ export async function GET() {
       name: u.name,
       createdAt: u.createdAt.toISOString(),
       lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
+      loginCount: u.loginCount,
     })),
     serverTime: new Date().toISOString(),
   });

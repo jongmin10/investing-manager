@@ -10,6 +10,7 @@ export interface UserRow {
   name: string | null;
   createdAt: string; // ISO — 첫 로그인 시각
   lastLoginAt: string | null; // ISO — 마지막 로그인 시각 (미갱신 시 null)
+  loginCount: number; // 누적 로그인 횟수 (기본 0)
 }
 
 interface Props {
@@ -104,6 +105,10 @@ export default function UsersTable({ initialUsers }: Props) {
                     <span>마지막 로그인</span>
                     <span className="font-mono text-gray-700">{fmtDateTime(u.lastLoginAt)}</span>
                   </div>
+                  <div className="flex items-center justify-between text-[11px] text-gray-500">
+                    <span>로그인 횟수</span>
+                    <span className="font-mono text-gray-700">{u.loginCount.toLocaleString("ko-KR")}</span>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -122,6 +127,9 @@ export default function UsersTable({ initialUsers }: Props) {
                     <th scope="col" className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
                       마지막 로그인
                     </th>
+                    <th scope="col" className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
+                      로그인 횟수
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -138,6 +146,9 @@ export default function UsersTable({ initialUsers }: Props) {
                       </td>
                       <td className="px-4 py-3 text-gray-600 whitespace-nowrap font-mono text-xs">
                         {fmtDateTime(u.lastLoginAt)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap font-mono text-xs">
+                        {u.loginCount.toLocaleString("ko-KR")}
                       </td>
                     </tr>
                   ))}
