@@ -124,6 +124,20 @@ export default function Sidebar() {
               <span className="w-1.5 h-1.5 rounded-full bg-white/70 flex-shrink-0" />
             )}
           </Link>
+          <Link
+            href="/admin/users"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150 ${
+              pathname === "/admin/users"
+                ? "bg-blue-500 text-white font-semibold shadow-sm"
+                : "text-blue-900 hover:bg-blue-100 hover:text-blue-700"
+            }`}
+          >
+            <span className="text-base leading-none">👥</span>
+            <span className="flex-1 truncate">사용자 목록</span>
+            {pathname === "/admin/users" && (
+              <span className="w-1.5 h-1.5 rounded-full bg-white/70 flex-shrink-0" />
+            )}
+          </Link>
         </div>
       )}
 

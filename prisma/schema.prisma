@@ -49,8 +49,9 @@ model User {
   emailVerified DateTime?
   name          String?
   image         String?
-  createdAt     DateTime  @default(now())
+  createdAt     DateTime  @default(now())  // 최초 로그인 시각 — Credentials authorize 의 user.create 시점
   updatedAt     DateTime  @updatedAt
+  lastLoginAt   DateTime?                  // 마지막 로그인 시각 — events.signIn 훅에서 갱신(기존 유저는 첫 갱신 전까지 null)
 
   accounts          Account[]
   sessions          Session[]

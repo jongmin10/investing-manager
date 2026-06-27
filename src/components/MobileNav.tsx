@@ -29,11 +29,14 @@ export default function MobileNav() {
   const [moreOpen, setMoreOpen] = useState(false);
   const { data: session, status } = useSession();
 
-  // 관리자에게만 "API 상태" 항목 노출
+  // 관리자에게만 "API 상태" · "사용자 목록" 항목 노출
   const allMoreItems = [
     ...MORE_ITEMS,
     ...(session?.user?.isAdmin
-      ? [{ href: "/admin/api-status", icon: "⚙️", label: "API 상태" }]
+      ? [
+          { href: "/admin/api-status", icon: "⚙️", label: "API 상태" },
+          { href: "/admin/users", icon: "👥", label: "사용자 목록" },
+        ]
       : []),
   ];
 

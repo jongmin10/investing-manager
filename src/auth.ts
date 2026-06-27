@@ -48,6 +48,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       ? [Google({ clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET })]
       : []),
   ],
+  events: {
+    // 로그인 성공 시 lastLoginAt 갱신. 모든 프로바이더(Credentials·Google) 공통 동작.
+    // best-effort — update 실패가 로그인 자체를 막지 않도록 try/catch 로 흡수.
+    async signIn({ user }) {
+      try {
+        const now = new Date();
+        if (user?.id) {
+          await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: now } });
+        } else if (user?.email) {
+          await prisma.user.update({ where: { email: user.email }, data: { lastLoginAt: now } });
+        }
+      } catch (e) {
+        console.error("[auth.events.signIn] lastLoginAt 갱신 실패", e);
+      }
+    },
+  },
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
