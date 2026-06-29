@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { getMood, getDecisionType } from "@/lib/journal-constants";
 
 interface EntryItem {
@@ -19,12 +19,15 @@ function fmtDate(d: string) {
 export default function JournalPage() {
   const { status } = useSession();
   const router = useRouter();
+  const pathname = usePathname();
   const [entries, setEntries] = useState<EntryItem[]>([]);
   const [loading, setLoading]  = useState(true);
 
   useEffect(() => {
-    if (status === "unauthenticated") router.push("/login");
-  }, [status, router]);
+    if (status === "unauthenticated") {
+      router.push(`/login?callbackUrl=${encodeURIComponent(pathname)}`);
+    }
+  }, [status, router, pathname]);
 
   useEffect(() => {
     if (status !== "authenticated") return;

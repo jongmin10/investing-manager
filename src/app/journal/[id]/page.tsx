@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { getMood, getDecisionType } from "@/lib/journal-constants";
@@ -22,13 +22,16 @@ export default function JournalDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { status } = useSession();
   const router = useRouter();
+  const pathname = usePathname();
   const [entry,   setEntry]   = useState<Entry | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    if (status === "unauthenticated") router.push("/login");
-  }, [status, router]);
+    if (status === "unauthenticated") {
+      router.push(`/login?callbackUrl=${encodeURIComponent(pathname)}`);
+    }
+  }, [status, router, pathname]);
 
   useEffect(() => {
     if (status !== "authenticated") return;

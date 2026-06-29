@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useSession, signIn } from "next-auth/react";
+import { usePathname } from "next/navigation";
 import type { LynchResponse } from "@/lib/lynch-types";
 import { DEFAULT_LYNCH_MODEL, LYNCH_MODELS } from "@/lib/lynch-models";
 import LynchTickerInput from "@/components/lynch/LynchTickerInput";
@@ -35,6 +36,7 @@ function progressFromElapsed(sec: number): number {
 
 export default function LynchPage() {
   const { data: session, status: sessionStatus } = useSession();
+  const pathname = usePathname();
 
   const [analysisState, setAnalysisState] = useState<AnalysisState>("idle");
   const [data,          setData]          = useState<LynchResponse | null>(null);
@@ -232,7 +234,7 @@ export default function LynchPage() {
             </div>
           </div>
           <button
-            onClick={() => signIn()}
+            onClick={() => signIn(undefined, { callbackUrl: pathname })}
             className="flex-shrink-0 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold transition-colors"
             aria-label="로그인 페이지로 이동"
           >
@@ -251,7 +253,7 @@ export default function LynchPage() {
             세션이 만료되었습니다. 다시 로그인해 주세요.
           </p>
           <button
-            onClick={() => { setAuthError(false); signIn(); }}
+            onClick={() => { setAuthError(false); signIn(undefined, { callbackUrl: pathname }); }}
             className="mt-2 px-3 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-medium transition-colors"
           >
             다시 로그인

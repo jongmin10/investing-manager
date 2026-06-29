@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { INDICATORS, IndicatorType, INDICATOR_TYPES, formatValue } from "@/lib/indicators";
 
 interface AlertSetting {
@@ -35,6 +36,7 @@ const CHANNEL_LABEL = { EMAIL: "이메일", PUSH: "웹 푸시" };
 const DIR_LABEL = { ABOVE: "이상", BELOW: "이하" };
 
 export default function AlertsPage() {
+  const pathname = usePathname();
   const [settings, setSettings] = useState<AlertSetting[]>([]);
   const [history, setHistory] = useState<AlertHistory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,7 +104,7 @@ export default function AlertsPage() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-center">
         <p className="text-gray-600 font-medium text-lg">로그인이 필요한 기능입니다.</p>
-        <a href="/login" className="bg-blue-500 text-white px-6 py-2.5 rounded-full font-medium hover:bg-blue-600 transition-colors">
+        <a href={`/login?callbackUrl=${encodeURIComponent(pathname)}`} className="bg-blue-500 text-white px-6 py-2.5 rounded-full font-medium hover:bg-blue-600 transition-colors">
           로그인 →
         </a>
       </div>
