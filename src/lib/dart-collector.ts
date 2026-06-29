@@ -318,9 +318,13 @@ async function fetchInsider6m(
   //  - null     : 수집 실패(타임아웃/네트워크/HTTP/JSON 파싱/DART 에러 status).
   //               호출부에서 insider 컬럼 update를 건너뛰어 기존 값을 보존해야 함.
   // 정상 조회했으나 6개월 내 유효 보고가 0건 → NA 저장용 빈 결과.
+  // asOf는 "수집 시각"을 기록한다(데이터 존재 경로와 동일). 이렇게 해야
+  // "정상 점검·최근 활동 없음(asOf 기록됨)"과 "수집 실패/미수집(null 반환 → 기존값 보존,
+  // 최초엔 null)"을 insiderAsOf 값으로 구분할 수 있다. 과거엔 asOf=null이어서 두 상태가
+  // 모두 null로 합쳐져, 대형·지주·금융사처럼 내부자 보고가 드문 종목이 '미수집'으로 오인됐다.
   const empty = {
     netBuy: null, voluntaryNetBuy: null, bulkGrantCount: 0,
-    buyCount: 0, sellCount: 0, asOf: null,
+    buyCount: 0, sellCount: 0, asOf: new Date(),
   };
   const url = `${DART_BASE}/elestock.json?crtfc_key=${dartKey()}&corp_code=${dartCode}`;
   try {
