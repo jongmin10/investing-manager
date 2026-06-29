@@ -1,20 +1,66 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-function LoginForm() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") ?? "/portfolio";
+const DEFAULT_REDIRECT = "/portfolio";
 
-  const [email,    setEmail]    = useState("");
-  const [name,     setName]     = useState("");
-  const [password, setPassword] = useState("");
-  const [loading,  setLoading]  = useState(false);
-  const [error,    setError]    = useState("");
+/**
+ * 오픈 리다이렉트 방어.
+ * 내부 경로(/로 시작하되 //는 아닌)만 허용하고 외부 URL은 거부한다.
+ */
+function isSafeInternalUrl(url: string): boolean {
+  return url.startsWith("/") && !url.startsWith("//");
+}
+
+function LoginForm() {
+  const searchParams = useSearchParams();
+
+  const [callbackUrl, setCallbackUrl] = useState<string>(DEFAULT_REDIRECT);
+  const [email,       setEmail]       = useState("");
+  const [name,        setName]        = useState("");
+  const [password,    setPassword]    = useState("");
+  const [loading,     setLoading]     = useState(false);
+  const [error,       setError]       = useState("");
+
+  /**
+   * callbackUrl 결정 우선순위:
+   * 1. 쿼리 파라미터 ?callbackUrl=... (미들웨어가 보호 경로 진입 시 주입)
+   * 2. document.referrer — 동일 origin이고 /login이 아닌 경우 (직접 /login 진입 시 이전 페이지)
+   * 3. 기본값 /portfolio
+   *
+   * useEffect 내에서 브라우저 전용 API(document.referrer)에 접근해야 하므로 클라이언트 전용.
+   */
+  useEffect(() => {
+    const fromQuery = searchParams.get("callbackUrl");
+    if (fromQuery && isSafeInternalUrl(fromQuery)) {
+      setCallbackUrl(fromQuery);
+      return;
+    }
+
+    try {
+      const ref = document.referrer;
+      if (ref) {
+        const refUrl = new URL(ref);
+        if (
+          refUrl.origin === window.location.origin &&
+          refUrl.pathname !== "/login"
+        ) {
+          const internalPath = refUrl.pathname + refUrl.search;
+          if (isSafeInternalUrl(internalPath)) {
+            setCallbackUrl(internalPath);
+            return;
+          }
+        }
+      }
+    } catch {
+      // referrer 파싱 실패는 무시하고 기본값 사용
+    }
+
+    setCallbackUrl(DEFAULT_REDIRECT);
+  }, [searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -22,22 +68,41 @@ function LoginForm() {
     setLoading(true);
     setError("");
 
+    /**
+     * 성공 경로에서는 하드 내비게이션(window.location.assign)을 사용한다.
+     * router.push + router.refresh(소프트 내비게이션)은 SessionProvider의 인메모리
+     * 세션 캐시를 갱신하지 못해 Sidebar/AuthButton이 status==="loading" 스켈레톤에
+     * 고착되는 버그가 발생한다. 하드 내비게이션은 앱을 완전 리마운트하므로
+     * SessionProvider가 새 쿠키로 세션을 재조회한다.
+     */
+    let redirecting = false;
+
     try {
-      const res = await signIn("credentials", { email, name, password, redirect: false });
+      const res = await signIn("credentials", {
+        email,
+        name,
+        password,
+        redirect: false,
+      });
+
       if (res?.error) {
         setError("로그인에 실패했습니다. 다시 시도해주세요.");
-        setLoading(false);
       } else if (res?.ok) {
-        router.push(callbackUrl);
-        router.refresh();
+        redirecting = true;
+        // 하드 내비게이션: 페이지 언로드까지 로딩 상태 유지(UX 일관성)
+        window.location.assign(callbackUrl);
       } else {
         setError("알 수 없는 오류가 발생했습니다.");
-        setLoading(false);
       }
     } catch (err) {
       console.error("로그인 오류:", err);
       setError("서버 연결에 실패했습니다. 잠시 후 다시 시도해주세요.");
-      setLoading(false);
+    } finally {
+      // 성공(redirecting) 경로는 페이지 언로드 중이므로 loading 리셋 생략.
+      // 실패/에러 경로에서만 loading 리셋해 버튼이 다시 활성화되도록 한다.
+      if (!redirecting) {
+        setLoading(false);
+      }
     }
   }
 
@@ -45,29 +110,46 @@ function LoginForm() {
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">이메일</label>
-        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-          placeholder="example@email.com" required
-          className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="example@email.com"
+          required
+          className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+        />
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
           이름 <span className="text-gray-400 font-normal">(선택 · 첫 가입 시)</span>
         </label>
-        <input type="text" value={name} onChange={(e) => setName(e.target.value)}
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
           placeholder="홍길동"
-          className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+          className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+        />
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
           비밀번호 <span className="text-gray-400 font-normal">(운영 환경)</span>
         </label>
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-          placeholder="공유 비밀번호" autoComplete="current-password"
-          className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="공유 비밀번호"
+          autoComplete="current-password"
+          className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+        />
       </div>
       {error && <p className="text-sm text-red-500">{error}</p>}
-      <button type="submit" disabled={loading || !email}
-        className="w-full bg-blue-500 text-white py-2.5 rounded-xl font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+      <button
+        type="submit"
+        disabled={loading || !email}
+        className="w-full bg-blue-500 text-white py-2.5 rounded-xl font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
         {loading ? "로그인 중..." : "이메일로 계속하기"}
       </button>
     </form>
