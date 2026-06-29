@@ -75,7 +75,7 @@ function Badge({ label, value, unit, estimate = false }: {
 }
 
 export default function WatchlistPage() {
-  const [watchlist, setWatchlist] = useState<Set<string>>(new Set());
+  const [, setWatchlist] = useState<Set<string>>(new Set());
   const [items, setItems]         = useState<StockItem[]>([]);
   const [loading, setLoading]     = useState(true);
 

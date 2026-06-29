@@ -1,6 +1,6 @@
 import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { INDICATOR_TYPES, INDICATORS, IndicatorType } from "@/lib/indicators";
+import { INDICATOR_TYPES, IndicatorType } from "@/lib/indicators";
 import IndicatorCard from "@/components/IndicatorCard";
 import RealtimeRefresh from "@/components/RealtimeRefresh";
 import MarketSummaryCard from "@/components/MarketSummary";

@@ -1,4 +1,4 @@
-import { INDICATORS, INDICATOR_TYPES, formatValue } from "@/lib/indicators";
+import { INDICATORS } from "@/lib/indicators";
 import Link from "next/link";
 
 export const metadata = {

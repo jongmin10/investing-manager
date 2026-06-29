@@ -16,11 +16,6 @@ interface CalendarEvent {
   isFavorite: boolean;
 }
 
-const IMPORTANCE_LABEL: Record<Importance, string> = {
-  HIGH: "주요",
-  MEDIUM: "일반",
-  LOW: "참고",
-};
 
 const ALL_TYPES: (EventType | "ALL")[] = ["ALL", "FOMC", "BOK_MPC", "US_CPI", "KR_CPI", "US_NFP", "KR_EMPLOYMENT"];
 const FILTER_LABEL: Record<string, string> = {
