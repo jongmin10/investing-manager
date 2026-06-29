@@ -1,9 +1,11 @@
 "use client";
 import { useSession, signOut } from "next-auth/react";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
 
 export default function AuthButton() {
   const { data: session, status } = useSession();
+  const pathname = usePathname();
 
   if (status === "loading") {
     return <div className="w-16 h-6 bg-gray-200 animate-pulse rounded" />;
@@ -33,7 +35,7 @@ export default function AuthButton() {
 
   return (
     <Link
-      href="/login"
+      href={`/login?callbackUrl=${encodeURIComponent(pathname)}`}
       className="text-sm bg-blue-500 text-white px-4 py-1.5 rounded-full hover:bg-blue-600 transition-colors font-medium"
     >
       로그인
