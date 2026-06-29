@@ -157,6 +157,37 @@ console.log("\n[6] //evil.com 프로토콜-상대 URL 방어");
   await ctx.close();
 }
 
+// ── 7. 투자일기(/journal) — 미들웨어 보호 외 페이지 복귀 (#24) ───────────
+console.log("\n[7] 투자일기 /journal → 로그인 후 일기로 복귀(대시보드 아님)");
+{
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  // 대시보드 하드 로드 후 /journal로 진입 — referrer 함정(대시보드) 재현
+  await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/journal`, { waitUntil: "networkidle" });
+  // 클라이언트 가드가 /login?callbackUrl=/journal로 보냄
+  await page.waitForURL("**/login**", { timeout: 12000 }).catch(() => {});
+  const loginUrl = new URL(page.url());
+  if (loginUrl.pathname === "/login" && loginUrl.searchParams.get("callbackUrl") === "/journal") {
+    ok("/journal 미인증 → /login?callbackUrl=/journal 주입");
+  } else {
+    fail("journal callbackUrl 주입", `pathname=${loginUrl.pathname} callbackUrl=${loginUrl.searchParams.get("callbackUrl")}`);
+  }
+  // 로그인 후 /journal 복귀 확인
+  await page.waitForSelector('input[type="email"]', { timeout: 12000 });
+  await page.fill('input[type="email"]', EMAIL);
+  await page.fill('input[type="password"]', PASSWORD);
+  await page.click('button[type="submit"]');
+  await page.waitForURL("**/journal", { timeout: 20000 }).catch(() => {});
+  const finalPath = new URL(page.url()).pathname;
+  if (finalPath === "/journal") {
+    ok("로그인 후 /journal 복귀(대시보드로 새지 않음)");
+  } else {
+    fail("journal 복귀", `기대 /journal, 실제 ${finalPath}`);
+  }
+  await ctx.close();
+}
+
 await browser.close();
 console.log("\n" + "─".repeat(50));
 console.log(`결과: ${passed} 통과 / ${failed} 실패`);
