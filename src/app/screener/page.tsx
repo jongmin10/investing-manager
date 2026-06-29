@@ -2,32 +2,23 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { getWatchlist, toggleWatchlistItem } from "@/lib/watchlist";
+import type { ScreenerItem, ScreenerResult, ScreenerSortKey } from "@/lib/screener-types";
 
-interface StockItem {
-  id: string; name: string; market: string; sector: string | null;
-  price: number; changeRate: number | null;
-  high52w: number; low52w: number; high52wRatio: number;
-  volume: number | null; collectedAt: string;
-  revenue: number | null; operatingProfit: number | null;
-  revenueGrowth: number | null; opGrowth: number | null;
-  netGrowth: number | null; opMargin: number | null;
-  cnsEps: number | null;
-  per: number | null; cnsPer: number | null; pbr: number | null; dividendYield: number | null;
-  period: string | null;
-}
-
-interface ScreenerResult {
-  items: StockItem[];
-  total: number;
-  sectors: string[];
-  financialStatus: { count: number; hasDartKey: boolean } | null;
-  collectedAt: string | null;
-  isUpToDate: boolean;
-}
-
-type SortKey = "high52wRatio" | "changeRate" | "price" | "volume" | "revenueGrowth" | "opGrowth" | "netGrowth" | "revenue";
-type Market   = "ALL" | "KOSPI" | "KOSDAQ";
+type Market     = "ALL" | "KOSPI" | "KOSDAQ";
 type RatePreset = "" | "up" | "down" | "surge" | "plunge" | "custom";
+
+// ── 신고가 돌파 파라미터 프리셋 ───────────────────────────────
+const BREAKOUT_QUIET_PRESETS = [
+  { label: "1개월 조정 후", val: 20  },
+  { label: "3개월 조정 후", val: 60  },
+  { label: "6개월 조정 후", val: 120 },
+] as const;
+
+const BREAKOUT_WINDOW_PRESETS = [
+  { label: "오늘 돌파",     val: 1  },
+  { label: "이번 주 돌파",  val: 5  },
+  { label: "최근 2주 돌파", val: 10 },
+] as const;
 
 const MARKET_OPTIONS: { key: Market; label: string }[] = [
   { key: "ALL",    label: "전체"   },
@@ -36,14 +27,15 @@ const MARKET_OPTIONS: { key: Market; label: string }[] = [
 ];
 
 const RATE_PRESETS: { key: RatePreset; label: string; min: string; max: string }[] = [
-  { key: "",       label: "전체",     min: "",   max: ""   },
-  { key: "up",     label: "상승",     min: "0",  max: ""   },
-  { key: "down",   label: "하락",     min: "",   max: "0"  },
-  { key: "surge",  label: "급등 3%+", min: "3",  max: ""   },
-  { key: "plunge", label: "급락 3%-", min: "",   max: "-3" },
-  { key: "custom", label: "직접 입력", min: "",  max: ""   },
+  { key: "",       label: "전체",      min: "",   max: ""   },
+  { key: "up",     label: "상승",      min: "0",  max: ""   },
+  { key: "down",   label: "하락",      min: "",   max: "0"  },
+  { key: "surge",  label: "급등 3%+",  min: "3",  max: ""   },
+  { key: "plunge", label: "급락 3%-",  min: "",   max: "-3" },
+  { key: "custom", label: "직접 입력", min: "",   max: ""   },
 ];
 
+// ── 포맷 유틸 ─────────────────────────────────────────────────
 function fmtPrice(v: number) {
   return v.toLocaleString("ko-KR") + "원";
 }
@@ -65,6 +57,12 @@ function fmtTime(iso: string | null) {
     hour: "2-digit", minute: "2-digit",
   });
 }
+/** ISO 날짜 문자열 → "MM/DD" (KST 기준) */
+function fmtBreakoutDate(iso: string): string {
+  const d = new Date(iso);
+  const s = d.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }); // "2026-06-22"
+  return s.slice(5).replace("-", "/"); // "06/22"
+}
 function growthColor(v: number | null) {
   if (v == null) return "text-gray-300";
   return v >= 20 ? "text-emerald-600" : v >= 0 ? "text-blue-500" : "text-red-400";
@@ -74,6 +72,7 @@ function growthBg(v: number | null) {
   return v >= 20 ? "bg-emerald-50" : v >= 0 ? "bg-blue-50" : "bg-red-50";
 }
 
+// ── 페이지 컴포넌트 ───────────────────────────────────────────
 export default function ScreenerPage() {
   const [result,              setResult]              = useState<ScreenerResult | null>(null);
   const [loading,             setLoading]             = useState(true);
@@ -104,7 +103,7 @@ export default function ScreenerPage() {
     setWatchlist(toggleWatchlistItem(id));
   }
 
-  // ── 필터 상태 ─────────────────────────────────────────
+  // ── 필터 상태 ─────────────────────────────────────────────
   const [market,           setMarket]           = useState<Market>("ALL");
   const [sector,           setSector]           = useState("");
   const [use52w,           setUse52w]           = useState(false);
@@ -112,15 +111,23 @@ export default function ScreenerPage() {
   const [ratePreset,       setRatePreset]       = useState<RatePreset>("");
   const [changeRateMin,    setChangeRateMin]    = useState("");
   const [changeRateMax,    setChangeRateMax]    = useState("");
-  const [volumeMin,        setVolumeMin]        = useState("");        // A: 거래량 최소
-  const [profitableOnly,   setProfitableOnly]   = useState(false);    // A: 흑자 토글
-  const [revenueMin,       setRevenueMin]       = useState("");        // A: 매출 규모 최소
+  const [volumeMin,        setVolumeMin]        = useState("");
+  const [profitableOnly,   setProfitableOnly]   = useState(false);
+  const [revenueMin,       setRevenueMin]       = useState("");
   const [revenueGrowthMin, setRevenueGrowthMin] = useState("");
   const [opGrowthMin,      setOpGrowthMin]      = useState("");
-  const [netGrowthMin,     setNetGrowthMin]     = useState("");        // A: 순이익 성장률
+  const [netGrowthMin,     setNetGrowthMin]     = useState("");
   const [opMarginMin,      setOpMarginMin]      = useState("");
   const [dividendYieldMin, setDividendYieldMin] = useState("");
-  const [sortBy,           setSortBy]           = useState<SortKey>("high52wRatio");
+  const [sortBy,           setSortBy]           = useState<ScreenerSortKey>("high52wRatio");
+
+  // ── 신고가 돌파 필터 상태 ────────────────────────────────
+  const [useBreakout,           setUseBreakout]           = useState(false);
+  const [breakoutQuietDays,     setBreakoutQuietDays]     = useState(60);
+  const [breakoutWindowDays,    setBreakoutWindowDays]    = useState(5);
+  const [breakoutTolerance,     setBreakoutTolerance]     = useState(0.5);
+  const [breakoutQuietMaxRatio, setBreakoutQuietMaxRatio] = useState(80);
+  const [showBreakoutAdvanced,  setShowBreakoutAdvanced]  = useState(false);
 
   // 등락률 프리셋 선택 시 min/max 자동 설정
   function handleRatePreset(key: RatePreset) {
@@ -132,8 +139,15 @@ export default function ScreenerPage() {
     }
   }
 
+  // breakout 토글 — OFF 시 breakoutDate 정렬도 해제
+  function handleToggleBreakout() {
+    const next = !useBreakout;
+    setUseBreakout(next);
+    if (!next && sortBy === "breakoutDate") setSortBy("high52wRatio");
+  }
+
   const hasFinancialFilter = revenueGrowthMin || opGrowthMin || netGrowthMin || opMarginMin || profitableOnly || revenueMin || dividendYieldMin;
-  const hasAnyFilter = sector || use52w || ratePreset !== "" || volumeMin ||
+  const hasAnyFilter = sector || use52w || useBreakout || ratePreset !== "" || volumeMin ||
     revenueGrowthMin || opGrowthMin || netGrowthMin || opMarginMin || dividendYieldMin ||
     profitableOnly || revenueMin || market !== "ALL";
 
@@ -153,6 +167,14 @@ export default function ScreenerPage() {
     if (netGrowthMin)               p.set("netGrowthMin", netGrowthMin);
     if (opMarginMin)                p.set("opMarginMin", opMarginMin);
     if (dividendYieldMin)           p.set("dividendYieldMin", dividendYieldMin);
+    // 신고가 돌파 파라미터
+    if (useBreakout) {
+      p.set("breakout", "true");
+      p.set("breakoutQuietDays",     String(breakoutQuietDays));
+      p.set("breakoutWindowDays",    String(breakoutWindowDays));
+      p.set("breakoutTolerance",     String(breakoutTolerance));
+      p.set("breakoutQuietMaxRatio", String(breakoutQuietMaxRatio));
+    }
     p.set("sortBy", sortBy);
 
     const res  = await fetch(`/api/screener?${p}`);
@@ -161,14 +183,15 @@ export default function ScreenerPage() {
     setLoading(false);
   }, [market, sector, use52w, high52wMin, changeRateMin, changeRateMax,
       volumeMin, profitableOnly, revenueMin,
-      revenueGrowthMin, opGrowthMin, netGrowthMin, opMarginMin, dividendYieldMin, sortBy]);
+      revenueGrowthMin, opGrowthMin, netGrowthMin, opMarginMin, dividendYieldMin,
+      useBreakout, breakoutQuietDays, breakoutWindowDays, breakoutTolerance, breakoutQuietMaxRatio,
+      sortBy]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   async function handleCollect() {
     setCollecting(true);
     try {
-      // 30개씩 배치 수집 (Vercel 60초 타임아웃 대응)
       let offset = 0;
       while (true) {
         const res  = await fetch("/api/screener/collect", {
@@ -189,7 +212,6 @@ export default function ScreenerPage() {
   async function handleFinancialCollect() {
     setFinancialCollecting(true);
     try {
-      // 20개씩 배치 수집 (Vercel 60초 타임아웃 대응)
       let offset = 0;
       while (true) {
         const res  = await fetch("/api/screener/financial", {
@@ -211,6 +233,11 @@ export default function ScreenerPage() {
     setRatePreset(""); setChangeRateMin(""); setChangeRateMax("");
     setVolumeMin(""); setProfitableOnly(false); setRevenueMin("");
     setRevenueGrowthMin(""); setOpGrowthMin(""); setNetGrowthMin(""); setOpMarginMin(""); setDividendYieldMin("");
+    setUseBreakout(false);
+    setBreakoutQuietDays(60); setBreakoutWindowDays(5);
+    setBreakoutTolerance(0.5); setBreakoutQuietMaxRatio(80);
+    setShowBreakoutAdvanced(false);
+    if (sortBy === "breakoutDate") setSortBy("high52wRatio");
   }
 
   const fin     = result?.financialStatus;
@@ -266,7 +293,6 @@ export default function ScreenerPage() {
                 ? <><span className="w-3 h-3 border-2 border-violet-300/40 border-t-violet-500 rounded-full animate-spin" />수집 중...</>
                 : <>📋 재무 수집 {fin ? `(${fin.count}개)` : ""}</>}
             </button>
-            {/* 호버 툴팁 */}
             <div className="absolute right-0 top-full mt-1.5 z-50 hidden group-hover:block w-52 bg-gray-900 text-white text-[11px] rounded-xl shadow-xl p-3 pointer-events-none">
               <div className="absolute -top-1.5 right-4 w-3 h-3 bg-gray-900 rotate-45 rounded-sm" />
               {fin?.hasDartKey ? (
@@ -313,7 +339,7 @@ export default function ScreenerPage() {
           </div>
         </div>
 
-        {/* 행 1b: 업종 · 정렬 (간격 최소) */}
+        {/* 행 1b: 업종 · 정렬 */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2">
             <span className="text-xs font-medium text-gray-500">업종</span>
@@ -325,7 +351,7 @@ export default function ScreenerPage() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-medium text-gray-500">정렬</span>
-            <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortKey)}
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value as ScreenerSortKey)}
               className="border border-gray-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white">
               <option value="high52wRatio">52주 고가 근접도</option>
               <option value="changeRate">등락률 높은순</option>
@@ -335,6 +361,10 @@ export default function ScreenerPage() {
               <option value="revenueGrowth">매출 성장률 높은순</option>
               <option value="opGrowth">영업이익 성장률 높은순</option>
               <option value="netGrowth">순이익 성장률 높은순</option>
+              {/* breakout 필터 ON일 때만 노출 */}
+              {useBreakout && (
+                <option value="breakoutDate">신고가 돌파 최신순</option>
+              )}
             </select>
           </div>
         </div>
@@ -343,7 +373,7 @@ export default function ScreenerPage() {
         <div className="space-y-3 pt-3 border-t border-gray-100">
           <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">가격 조건</p>
 
-          {/* 52주 신고가: 라벨 + 우측 토글 */}
+          {/* 52주 신고가: 기존 토글 */}
           <div className="flex items-center gap-3">
             <span className="text-xs font-medium text-gray-700 whitespace-nowrap">52주 신고가</span>
             <div onClick={() => setUse52w((v) => !v)}
@@ -360,7 +390,177 @@ export default function ScreenerPage() {
             )}
           </div>
 
-          {/* 등락률 퀵 버튼 (자체 줄) */}
+          {/* 조정 후 신고가 돌파: 접근성 완비 토글 */}
+          <div className="flex flex-wrap items-center gap-3">
+            <span id="breakout-label" className="text-xs font-medium text-gray-700 whitespace-nowrap">
+              조정 후 신고가 돌파
+            </span>
+            {/* role="switch" + aria-checked + tabIndex + 키보드 핸들러 */}
+            <button
+              role="switch"
+              aria-checked={useBreakout}
+              aria-labelledby="breakout-label"
+              tabIndex={0}
+              onClick={handleToggleBreakout}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  handleToggleBreakout();
+                }
+              }}
+              className={`w-9 h-5 rounded-full transition-colors relative flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+                useBreakout ? "bg-emerald-500" : "bg-gray-400"
+              }`}
+            >
+              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                useBreakout ? "translate-x-4" : "translate-x-0.5"
+              }`} />
+            </button>
+          </div>
+
+          {/* 돌파 파라미터 — 토글 ON 시 노출 */}
+          {useBreakout && (
+            <div className="pl-3 border-l-2 border-emerald-100 space-y-3 ml-1">
+
+              {/* 조정 기간 프리셋 */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  id="breakout-quiet-label"
+                  className="text-xs font-medium text-gray-500 whitespace-nowrap w-16 shrink-0"
+                >
+                  조정 기간
+                </span>
+                <div
+                  role="group"
+                  aria-labelledby="breakout-quiet-label"
+                  className="flex flex-wrap gap-1"
+                >
+                  {BREAKOUT_QUIET_PRESETS.map(({ label, val }) => (
+                    <button
+                      key={val}
+                      aria-pressed={breakoutQuietDays === val}
+                      onClick={() => setBreakoutQuietDays(val)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                        breakoutQuietDays === val
+                          ? "bg-emerald-500 text-white border border-emerald-500 shadow-sm"
+                          : "bg-gray-200 text-gray-700 border border-gray-300 hover:bg-gray-300 hover:text-gray-900"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 돌파 시점 프리셋 */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  id="breakout-window-label"
+                  className="text-xs font-medium text-gray-500 whitespace-nowrap w-16 shrink-0"
+                >
+                  돌파 시점
+                </span>
+                <div
+                  role="group"
+                  aria-labelledby="breakout-window-label"
+                  className="flex flex-wrap gap-1"
+                >
+                  {BREAKOUT_WINDOW_PRESETS.map(({ label, val }) => (
+                    <button
+                      key={val}
+                      aria-pressed={breakoutWindowDays === val}
+                      onClick={() => setBreakoutWindowDays(val)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                        breakoutWindowDays === val
+                          ? "bg-emerald-500 text-white border border-emerald-500 shadow-sm"
+                          : "bg-gray-200 text-gray-700 border border-gray-300 hover:bg-gray-300 hover:text-gray-900"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 고급 설정 — aria-expanded 기반 접힘 */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowBreakoutAdvanced((v) => !v)}
+                  aria-expanded={showBreakoutAdvanced}
+                  aria-controls="breakout-advanced-panel"
+                  className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors select-none"
+                >
+                  <svg
+                    className={`w-3 h-3 transition-transform ${showBreakoutAdvanced ? "rotate-90" : ""}`}
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                  고급 설정
+                </button>
+                {showBreakoutAdvanced && (
+                  <div
+                    id="breakout-advanced-panel"
+                    className="mt-2 pl-4 space-y-2.5"
+                  >
+                    {/* 허용 오차 슬라이더 */}
+                    <div className="flex items-center gap-3">
+                      <label
+                        htmlFor="breakout-tolerance"
+                        className="text-xs text-gray-500 whitespace-nowrap w-16"
+                      >
+                        허용 오차
+                      </label>
+                      <input
+                        id="breakout-tolerance"
+                        type="range"
+                        min={0} max={2} step={0.1}
+                        value={breakoutTolerance}
+                        onChange={(e) => setBreakoutTolerance(Number(e.target.value))}
+                        aria-valuemin={0}
+                        aria-valuemax={2}
+                        aria-valuenow={breakoutTolerance}
+                        aria-valuetext={`${breakoutTolerance.toFixed(1)}% 허용 오차`}
+                        className="w-24 accent-emerald-500"
+                      />
+                      <span className="text-xs font-bold text-emerald-700 w-12">
+                        {breakoutTolerance.toFixed(1)}%
+                      </span>
+                      <span className="text-[10px] text-gray-400">(기본 0.5%)</span>
+                    </div>
+                    {/* 조정 상단 비율 슬라이더 */}
+                    <div className="flex items-center gap-3">
+                      <label
+                        htmlFor="breakout-quiet-max"
+                        className="text-xs text-gray-500 whitespace-nowrap w-16"
+                      >
+                        조정 상단
+                      </label>
+                      <input
+                        id="breakout-quiet-max"
+                        type="range"
+                        min={60} max={95} step={1}
+                        value={breakoutQuietMaxRatio}
+                        onChange={(e) => setBreakoutQuietMaxRatio(Number(e.target.value))}
+                        aria-valuemin={60}
+                        aria-valuemax={95}
+                        aria-valuenow={breakoutQuietMaxRatio}
+                        aria-valuetext={`고점 대비 ${breakoutQuietMaxRatio}% 미만을 조정 구간으로 인정`}
+                        className="w-24 accent-emerald-500"
+                      />
+                      <span className="text-xs font-bold text-emerald-700 w-12">
+                        {breakoutQuietMaxRatio}%
+                      </span>
+                      <span className="text-[10px] text-gray-400">(기본 80%)</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 등락률 퀵 버튼 */}
           <div className="flex items-center gap-3">
             <span className="text-xs font-medium text-gray-500 whitespace-nowrap shrink-0">등락률</span>
             <div className="flex flex-wrap items-center gap-1 rounded-xl">
@@ -383,7 +583,7 @@ export default function ScreenerPage() {
             </div>
           </div>
 
-          {/* 거래량 최소 (A: 신규) */}
+          {/* 거래량 최소 */}
           <div className="flex items-center gap-3">
             <span className="text-xs font-medium text-gray-500 whitespace-nowrap shrink-0">거래량 최소</span>
             <div className="flex flex-wrap gap-1 rounded-xl">
@@ -422,7 +622,7 @@ export default function ScreenerPage() {
             </div>
           </label>
 
-          {/* 매출 규모 (자체 줄) */}
+          {/* 매출 규모 */}
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-gray-500 whitespace-nowrap shrink-0">매출 규모</span>
             <div className="flex flex-wrap gap-1 rounded-xl">
@@ -444,11 +644,11 @@ export default function ScreenerPage() {
 
           {/* 성장률 입력 */}
           <div className="flex flex-wrap items-center gap-4">
-            <FilterInput label="매출 성장" value={revenueGrowthMin} onChange={setRevenueGrowthMin} />
-            <FilterInput label="영업이익 성장" value={opGrowthMin} onChange={setOpGrowthMin} />
-            <FilterInput label="순이익 성장" value={netGrowthMin} onChange={setNetGrowthMin} />
-            <FilterInput label="영업이익률" value={opMarginMin} onChange={setOpMarginMin} />
-            <FilterInput label="배당수익률" value={dividendYieldMin} onChange={setDividendYieldMin} />
+            <FilterInput label="매출 성장"    value={revenueGrowthMin} onChange={setRevenueGrowthMin} />
+            <FilterInput label="영업이익 성장" value={opGrowthMin}      onChange={setOpGrowthMin} />
+            <FilterInput label="순이익 성장"  value={netGrowthMin}     onChange={setNetGrowthMin} />
+            <FilterInput label="영업이익률"   value={opMarginMin}      onChange={setOpMarginMin} />
+            <FilterInput label="배당수익률"   value={dividendYieldMin} onChange={setDividendYieldMin} />
           </div>
         </div>
 
@@ -463,12 +663,14 @@ export default function ScreenerPage() {
       <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
           <p className="text-sm font-semibold text-gray-800">
-            {loading ? "검색 중..." : `${result?.total ?? 0}개 종목`}
+            {loading
+              ? (useBreakout ? "히스토리 분석 중..." : "검색 중...")
+              : `${result?.total ?? 0}개 종목`}
             {result && !loading && (
               <span className="text-xs font-normal text-gray-400 ml-2">기준일 {fmtTime(result.collectedAt)}</span>
             )}
           </p>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {!loading && (result?.items.length ?? 0) > 0 && (
               <span className="md:hidden inline-flex items-center gap-1 text-[10px] text-gray-400 bg-gray-50 border border-gray-200 px-2 py-0.5 rounded-full">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l-4 4 4 4M16 9l4 4-4 4" /></svg>
@@ -501,7 +703,7 @@ export default function ScreenerPage() {
           <span className="w-8" />
         </div>
 
-        {/* 로딩 */}
+        {/* 로딩 스켈레톤 */}
         {loading && (
           <div className="divide-y divide-gray-50">
             {Array.from({ length: 8 }).map((_, i) => (
@@ -518,18 +720,32 @@ export default function ScreenerPage() {
           </div>
         )}
 
-        {/* 빈 결과 */}
+        {/* 빈 결과 — breakout ON/OFF 분기 */}
         {!loading && result?.items.length === 0 && (
-          <div className="py-16 text-center">
-            <p className="text-gray-500 font-medium">조건에 맞는 종목이 없습니다.</p>
-            <p className="text-sm text-gray-400 mt-1">필터를 완화하거나 데이터를 수집해보세요.</p>
+          <div className="py-16 text-center px-6">
+            {useBreakout ? (
+              <>
+                <p className="text-gray-500 font-medium">돌파 조건에 맞는 종목이 없습니다.</p>
+                <p className="text-sm text-gray-400 mt-1.5">
+                  조정 기간을 줄이거나 돌파 윈도를 늘려보세요.
+                </p>
+                <p className="text-xs text-gray-300 mt-1">
+                  고급 설정에서 허용 오차와 조정 상단 비율을 높이면 더 많은 종목이 검색됩니다.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-gray-500 font-medium">조건에 맞는 종목이 없습니다.</p>
+                <p className="text-sm text-gray-400 mt-1">필터를 완화하거나 데이터를 수집해보세요.</p>
+              </>
+            )}
           </div>
         )}
 
         {/* 종목 목록 */}
         {!loading && result && result.items.length > 0 && (
           <div className="divide-y divide-gray-50">
-            {result.items.map((item) => {
+            {result.items.map((item: ScreenerItem) => {
               const isPos = (item.changeRate ?? 0) >= 0;
               const ratio = item.high52wRatio;
               const ratioColor =
@@ -549,10 +765,22 @@ export default function ScreenerPage() {
                         item.market === "KOSPI" ? "bg-blue-50 text-blue-600" : "bg-emerald-50 text-emerald-600"
                       }`}>{item.market}</span>
                     </div>
-                    <p className="text-[11px] text-gray-400 mt-0.5 break-keep">
-                      {item.sector} · {item.id}
-                      {item.revenue && <span className="ml-1 text-gray-300">· {fmtRevenue(item.revenue)}</span>}
-                    </p>
+                    {/* 업종·종목코드 줄 — 돌파 배지 인라인 */}
+                    <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 mt-0.5">
+                      <span className="text-[11px] text-gray-400 break-keep">
+                        {item.sector} · {item.id}
+                        {item.revenue != null && (
+                          <span className="ml-1 text-gray-300">· {fmtRevenue(item.revenue)}</span>
+                        )}
+                      </span>
+                      {/* 돌파 배지: 이모지 금지, 텍스트+에메랄드, 대비 ≥5:1 */}
+                      {item.breakout && item.breakoutDate && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 leading-tight">
+                          돌파 {fmtBreakoutDate(item.breakoutDate)}
+                          {item.consolidationDays != null && ` · ${item.consolidationDays}일 조정`}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* 현재가 */}
@@ -595,17 +823,17 @@ export default function ScreenerPage() {
 
                   {/* 가치지표: PER·EPS·PBR·배당수익률 */}
                   <div className="flex flex-col gap-0.5">
-                    <ValBadge label="PER"    value={item.per}    unit="x"  low nullReason="적자/미제공" />
-                    <ValBadge label="추정PER" value={item.cnsPer} unit="x"  low nullReason="추정치없음" estimate />
-                    <ValBadge label="추정EPS" value={item.cnsEps} unit="원" won nullReason="추정치없음" estimate />
-                    <ValBadge label="PBR"  value={item.pbr}          unit="x"  low nullReason="주식수미확인" />
+                    <ValBadge label="PER"     value={item.per}           unit="x"   low nullReason="적자/미제공" />
+                    <ValBadge label="추정PER" value={item.cnsPer}        unit="x"   low nullReason="추정치없음" estimate />
+                    <ValBadge label="추정EPS" value={item.cnsEps}        unit="원"  won nullReason="추정치없음" estimate />
+                    <ValBadge label="PBR"     value={item.pbr}           unit="x"   low nullReason="주식수미확인" />
                     <ValBadge label="배당수익률" value={item.dividendYield} unit="%" nullReason="무배당" />
                   </div>
 
                   {/* 관심종목 + 네이버 링크 */}
                   <div className="flex items-center gap-1.5 justify-center">
                     <button onClick={() => handleToggleWatchlist(item.id)}
-                      title={watchlist.has(item.id) ? "관심종목 해제" : "관심종목 추가"}
+                      aria-label={watchlist.has(item.id) ? `${item.name} 관심종목 해제` : `${item.name} 관심종목 추가`}
                       className="transition-colors">
                       {watchlist.has(item.id)
                         ? <span className="text-amber-400 text-base leading-none">★</span>
@@ -613,7 +841,8 @@ export default function ScreenerPage() {
                     </button>
                     <a href={`https://finance.naver.com/item/main.naver?code=${item.id}`}
                       target="_blank" rel="noopener noreferrer"
-                      className="text-gray-300 hover:text-blue-400 transition-colors" title="네이버 금융">
+                      aria-label={`${item.name} 네이버 금융에서 보기`}
+                      className="text-gray-300 hover:text-blue-400 transition-colors">
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                           d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -638,7 +867,7 @@ export default function ScreenerPage() {
   );
 }
 
-// ── 서브 컴포넌트 ─────────────────────────────────────────
+// ── 서브 컴포넌트 ──────────────────────────────────────────────
 
 function NumInput({ value, onChange, placeholder, width = "w-20" }: {
   value: string; onChange: (v: string) => void; placeholder: string; width?: string;
@@ -663,7 +892,7 @@ function FilterInput({ label, value, onChange }: {
   );
 }
 
-// 가치지표 배지: PER·EPS·PBR·배당수익률
+// 가치지표 배지
 function ValBadge({
   label, value, unit, low = false, raw = false, won = false, nullReason, estimate = false,
 }: {
