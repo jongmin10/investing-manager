@@ -17,7 +17,7 @@ function fmtDate(d: string) {
 }
 
 export default function JournalPage() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const router = useRouter();
   const [entries, setEntries] = useState<EntryItem[]>([]);
   const [loading, setLoading]  = useState(true);
