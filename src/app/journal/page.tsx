@@ -70,7 +70,7 @@ export default function JournalPage() {
         </div>
         <Link
           href="/journal/new"
-          className="px-4 py-2 bg-blue-500 hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 text-white text-sm font-medium rounded-xl transition-colors"
+          className="shrink-0 whitespace-nowrap px-4 py-2 bg-blue-500 hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 text-white text-sm font-medium rounded-xl transition-colors"
         >
           + 새 일기
         </Link>
