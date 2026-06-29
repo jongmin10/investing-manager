@@ -80,11 +80,10 @@ test.describe("데스크톱 — 게시판 테이블", () => {
     await page.goto(`${BASE}/journal`);
     await page.waitForLoadState("networkidle");
 
-    // md:hidden 그리드는 데스크톱에서 display:none
-    const grid = page.locator('[aria-label="투자 일기 목록"]').filter({ has: page.locator(".grid-cols-2") }).first();
-    // getByRole table 이 보이면 grid는 숨겨져 있어야 함
+    // 데스크톱에서는 md:hidden 그리드 대신 table 이 보여야 한다
     const table = page.getByRole("table");
     await expect(table).toBeVisible();
+    await expect(page.locator(".grid-cols-2")).toBeHidden();
   });
 });
 
