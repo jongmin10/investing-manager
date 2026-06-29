@@ -1,6 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { kstDateStr, kstDayRange } from "@/lib/kst";
+import type { ScreenerItem, ScreenerResult } from "@/lib/screener-types";
+import {
+  evaluateBreakout,
+  type BreakoutParams,
+  type BreakoutSnapshotRow,
+} from "@/lib/screener-breakout";
+
+/** NaN/범위 가드가 적용된 정수 파라미터 */
+function clampInt(raw: string | null, def: number, min: number, max: number): number {
+  const v = parseInt(raw ?? "", 10);
+  if (Number.isNaN(v)) return def;
+  return Math.min(Math.max(v, min), max);
+}
+
+/** NaN/범위 가드가 적용된 실수 파라미터 */
+function clampFloat(raw: string | null, def: number, min: number, max: number): number {
+  const v = parseFloat(raw ?? "");
+  if (Number.isNaN(v)) return def;
+  return Math.min(Math.max(v, min), max);
+}
 
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
@@ -21,9 +41,19 @@ export async function GET(req: NextRequest) {
   const sortBy           = sp.get("sortBy")           ?? "high52wRatio";
   const limit            = Math.min(parseInt(sp.get("limit") ?? "100"), 200);
 
+  // ── 52주 신고가 돌파 파라미터 (NaN/범위 가드) ──────────
+  const breakout = sp.get("breakout") === "true";
+  const breakoutParams: BreakoutParams = {
+    quietDays:     clampInt(sp.get("breakoutQuietDays"),     60, 1, 252),
+    windowDays:    clampInt(sp.get("breakoutWindowDays"),     5, 1, 60),
+    tolerance:     clampFloat(sp.get("breakoutTolerance"),  0.5, 0, 5),
+    quietMaxRatio: clampFloat(sp.get("breakoutQuietMaxRatio"), 80, 60, 95),
+  };
+
   const latest = await prisma.stockSnapshot.findFirst({ orderBy: { date: "desc" } });
   if (!latest) {
-    return NextResponse.json({ items: [], total: 0, sectors: [], collectedAt: null, isUpToDate: false, financialStatus: null });
+    const empty: ScreenerResult = { items: [], total: 0, sectors: [], collectedAt: null, isUpToDate: false, financialStatus: null };
+    return NextResponse.json(empty);
   }
 
   const latestStr = kstDateStr(latest.date);            // KST 기준 최신 수집일
@@ -61,21 +91,7 @@ export async function GET(req: NextRequest) {
     include: { stock: { select: { name: true, market: true, sector: true } } },
   });
 
-  type Item = {
-    id: string; name: string; market: string; sector: string | null;
-    price: number; changeRate: number | null;
-    high52w: number; low52w: number; high52wRatio: number;
-    volume: number | null; collectedAt: Date;
-    revenue: number | null; operatingProfit: number | null;
-    revenueGrowth: number | null; opGrowth: number | null;
-    netGrowth: number | null; opMargin: number | null;
-    // 가치지표
-    cnsEps: number | null;
-    per: number | null; cnsPer: number | null; pbr: number | null; dividendYield: number | null;
-    period: string | null;
-  };
-
-  let items: Item[] = snapshots.map((s) => {
+  let items: ScreenerItem[] = snapshots.map((s) => {
     const fin = financialMap.get(s.stockId);
     const per          = s.per    != null ? parseFloat(s.per.toFixed(2))    : null;
     const cnsPer       = s.cnsPer != null ? parseFloat(s.cnsPer.toFixed(2)) : null;
@@ -88,7 +104,7 @@ export async function GET(req: NextRequest) {
       price: s.price, changeRate: s.changeRate,
       high52w: s.high52w, low52w: s.low52w,
       high52wRatio: s.high52w > 0 ? parseFloat((s.price / s.high52w * 100).toFixed(1)) : 0,
-      volume: s.volume, collectedAt: s.date,
+      volume: s.volume, collectedAt: s.date.toISOString(),
       revenue:         fin?.revenue         ?? null,
       operatingProfit: fin?.operatingProfit ?? null,
       revenueGrowth:   fin?.revenueGrowth   ?? null,
@@ -97,6 +113,12 @@ export async function GET(req: NextRequest) {
       opMargin:        fin?.opMargin        ?? null,
       cnsEps, per, cnsPer, pbr, dividendYield,
       period: fin?.period ?? null,
+      // 돌파 필드 기본값 (breakout 필터 OFF 시 히스토리 쿼리 없이 그대로 반환 → 성능 회귀 없음)
+      breakout: false,
+      breakoutDate: null,
+      consolidationDays: null,
+      priorMaxRatio: null,
+      breakoutReason: null,
     };
   });
 
@@ -124,6 +146,42 @@ export async function GET(req: NextRequest) {
   if (dividendYieldMin !== null)
     items = items.filter((i) => i.dividendYield != null && i.dividendYield >= dividendYieldMin);
 
+  // ── 52주 신고가 돌파 판정 (breakout 필터 ON 일 때만 히스토리 윈도 쿼리) ──
+  if (breakout && items.length > 0) {
+    const { quietDays: N, windowDays: M } = breakoutParams;
+    // 캘린더로 넉넉히 조회 후 메모리에서 거래일 절단: buffer = (N+M)*1.5 + 15 캘린더일
+    const cutoffDays = Math.ceil((N + M) * 1.5) + 15;
+    const cutoff = new Date(dayStart.getTime() - cutoffDays * 86_400_000);
+
+    const ids = items.map((i) => i.id);
+    const history = await prisma.stockSnapshot.findMany({
+      where: { stockId: { in: ids }, date: { gte: cutoff, lte: dayEnd } },
+      select: { stockId: true, date: true, price: true, high52w: true, changeRate: true },
+      orderBy: [{ stockId: "asc" }, { date: "asc" }],
+    });
+
+    const byStock = new Map<string, BreakoutSnapshotRow[]>();
+    for (const r of history) {
+      const arr = byStock.get(r.stockId);
+      const row: BreakoutSnapshotRow = { date: r.date, price: r.price, high52w: r.high52w, changeRate: r.changeRate };
+      if (arr) arr.push(row);
+      else byStock.set(r.stockId, [row]);
+    }
+
+    for (const item of items) {
+      const series = byStock.get(item.id) ?? [];
+      const res = evaluateBreakout(series, breakoutParams);
+      item.breakout = res.breakout;
+      item.breakoutDate = res.breakoutDate;
+      item.consolidationDays = res.consolidationDays;
+      item.priorMaxRatio = res.priorMaxRatio;
+      item.breakoutReason = res.breakoutReason;
+    }
+
+    // 필터 활성 시 isBreakout 종목만 반환
+    items = items.filter((i) => i.breakout);
+  }
+
   // ── 정렬 ──────────────────────────────────────────────
   items.sort((a, b) => {
     switch (sortBy) {
@@ -134,16 +192,23 @@ export async function GET(req: NextRequest) {
       case "opGrowth":      return (b.opGrowth      ?? -Infinity) - (a.opGrowth      ?? -Infinity);
       case "netGrowth":     return (b.netGrowth     ?? -Infinity) - (a.netGrowth     ?? -Infinity);
       case "revenue":       return (b.revenue       ?? -Infinity) - (a.revenue       ?? -Infinity);
+      case "breakoutDate": {
+        // AC-NULL-SORT: breakoutDate=null 은 맨 뒤 (기존 -Infinity 패턴)
+        const av = a.breakoutDate ? new Date(a.breakoutDate).getTime() : -Infinity;
+        const bv = b.breakoutDate ? new Date(b.breakoutDate).getTime() : -Infinity;
+        return bv - av;
+      }
       default:              return b.high52wRatio - a.high52wRatio;
     }
   });
 
-  return NextResponse.json({
+  const result: ScreenerResult = {
     items: items.slice(0, limit),
     total: items.length,
     sectors,
     financialStatus,
-    collectedAt:  latest.date,
+    collectedAt:  latest.date.toISOString(),
     isUpToDate:   latestStr === kstDateStr(),
-  });
+  };
+  return NextResponse.json(result);
 }
