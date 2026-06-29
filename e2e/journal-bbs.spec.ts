@@ -1,9 +1,10 @@
 /**
  * journal-bbs.spec.ts
  *
- * 투자 일기 목록 페이지 BBS 레이아웃 검증:
- * - 데스크톱: 시맨틱 테이블 표시, 행 클릭 이동
- * - 모바일(390px): 2열 그리드, 가로 스크롤 없음, 셀 탭 이동
+ * 투자 일기 목록 페이지 BBS(게시판) 레이아웃 검증:
+ * - 전 뷰포트 공통: 시맨틱 테이블, 행 클릭 이동
+ * - 데스크톱: 5컬럼(번호·제목·결정·종목·날짜) 모두 표시
+ * - 모바일(390px): 동일 테이블을 압축 — 보조 컬럼(번호·종목) 숨김, 가로 스크롤 없음
  */
 import { test, expect, Page } from "@playwright/test";
 
@@ -30,24 +31,20 @@ async function ensureTestEntries(page: Page, count = 3) {
 test.describe("데스크톱 — 게시판 테이블", () => {
   test.use({ viewport: { width: 1280, height: 720 } });
 
-  test("시맨틱 테이블이 렌더링된다", async ({ page }) => {
+  test("시맨틱 테이블이 5컬럼으로 렌더링된다", async ({ page }) => {
     await ensureTestEntries(page);
     await page.goto(`${BASE}/journal`);
     await page.waitForLoadState("networkidle");
 
-    // 테이블 존재
     const table = page.getByRole("table", { name: "투자 일기 목록" });
     await expect(table).toBeVisible();
 
-    // 헤더 셀
-    const ths = table.locator("thead th");
-    await expect(ths).toHaveCount(5);
+    // 5개 헤더 모두 표시(번호·제목·결정·종목·날짜)
+    await expect(table.locator("thead th")).toHaveCount(5);
+    await expect(page.getByRole("columnheader", { name: "번호" })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "종목" })).toBeVisible();
 
-    // 적어도 1행
-    const rows = table.locator("tbody tr");
-    await expect(rows.first()).toBeVisible();
-
-    // 스크린샷
+    await expect(table.locator("tbody tr").first()).toBeVisible();
     await page.screenshot({ path: "test-results/journal-desktop.png", fullPage: false });
   });
 
@@ -55,10 +52,8 @@ test.describe("데스크톱 — 게시판 테이블", () => {
     await page.goto(`${BASE}/journal`);
     await page.waitForLoadState("networkidle");
 
-    const table = page.getByRole("table");
-    const firstRow = table.locator("tbody tr").first();
+    const firstRow = page.getByRole("table").locator("tbody tr").first();
     await expect(firstRow).toBeVisible();
-
     await firstRow.click();
     await page.waitForURL(/\/journal\/.+/, { timeout: 10_000 });
     expect(page.url()).toMatch(/\/journal\/.+/);
@@ -68,42 +63,34 @@ test.describe("데스크톱 — 게시판 테이블", () => {
     await page.goto(`${BASE}/journal`);
     await page.waitForLoadState("networkidle");
 
-    const table = page.getByRole("table");
-    const firstLink = table.locator("tbody tr").first().locator("a").first();
+    const firstLink = page.getByRole("table").locator("tbody tr").first().locator("a").first();
     await firstLink.focus();
     await firstLink.press("Enter");
     await page.waitForURL(/\/journal\/.+/, { timeout: 10_000 });
     expect(page.url()).toMatch(/\/journal\/.+/);
   });
-
-  test("모바일 그리드가 md+ 뷰포트에서 숨겨져 있다", async ({ page }) => {
-    await page.goto(`${BASE}/journal`);
-    await page.waitForLoadState("networkidle");
-
-    // 데스크톱에서는 md:hidden 그리드 대신 table 이 보여야 한다
-    const table = page.getByRole("table");
-    await expect(table).toBeVisible();
-    await expect(page.locator(".grid-cols-2")).toBeHidden();
-  });
 });
 
-test.describe("모바일 — 2열 그리드", () => {
+test.describe("모바일 — 압축 테이블", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test("2열 그리드가 렌더링되고 테이블은 숨겨진다", async ({ page }) => {
+  test("동일 테이블을 사용하되 보조 컬럼(번호·종목)이 숨겨진다", async ({ page }) => {
     await ensureTestEntries(page);
     await page.goto(`${BASE}/journal`);
     await page.waitForLoadState("networkidle");
 
-    // grid 컨테이너 (md:hidden)
-    const grid = page.locator(".grid-cols-2").first();
-    await expect(grid).toBeVisible();
+    // 모바일에서도 테이블 사용(2열 그리드 아님)
+    const table = page.getByRole("table", { name: "투자 일기 목록" });
+    await expect(table).toBeVisible();
+    await expect(page.locator(".grid-cols-2")).toHaveCount(0);
 
-    // 테이블은 hidden
-    const table = page.locator("table");
-    await expect(table).not.toBeVisible();
+    // 보조 컬럼은 숨김, 핵심 컬럼은 표시
+    await expect(page.getByRole("columnheader", { name: "번호" })).toBeHidden();
+    await expect(page.getByRole("columnheader", { name: "종목" })).toBeHidden();
+    await expect(page.getByRole("columnheader", { name: "제목" })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "결정" })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "날짜" })).toBeVisible();
 
-    // 스크린샷
     await page.screenshot({ path: "test-results/journal-mobile.png", fullPage: false });
   });
 
@@ -112,31 +99,16 @@ test.describe("모바일 — 2열 그리드", () => {
     await page.waitForLoadState("networkidle");
 
     const bodyScrollWidth = await page.evaluate(() => document.body.scrollWidth);
-    const viewportWidth = 390;
-    expect(bodyScrollWidth).toBeLessThanOrEqual(viewportWidth + 2); // 2px 여유
+    expect(bodyScrollWidth).toBeLessThanOrEqual(390 + 2); // 2px 여유
   });
 
-  test("셀 클릭 시 상세 페이지로 이동한다", async ({ page }) => {
+  test("행 클릭 시 상세 페이지로 이동한다", async ({ page }) => {
     await page.goto(`${BASE}/journal`);
     await page.waitForLoadState("networkidle");
 
-    const grid = page.locator(".grid-cols-2").first();
-    const firstCell = grid.locator("a").first();
-    await expect(firstCell).toBeVisible();
-
-    await firstCell.click();
-    await page.waitForURL(/\/journal\/.+/, { timeout: 10_000 });
-    expect(page.url()).toMatch(/\/journal\/.+/);
-  });
-
-  test("셀 탭 포커스 후 Enter로 이동", async ({ page }) => {
-    await page.goto(`${BASE}/journal`);
-    await page.waitForLoadState("networkidle");
-
-    const grid = page.locator(".grid-cols-2").first();
-    const firstCell = grid.locator("a").first();
-    await firstCell.focus();
-    await firstCell.press("Enter");
+    const firstRow = page.getByRole("table").locator("tbody tr").first();
+    await expect(firstRow).toBeVisible();
+    await firstRow.click();
     await page.waitForURL(/\/journal\/.+/, { timeout: 10_000 });
     expect(page.url()).toMatch(/\/journal\/.+/);
   });

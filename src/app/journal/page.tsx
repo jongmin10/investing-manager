@@ -98,38 +98,40 @@ export default function JournalPage() {
         </div>
       ) : (
         <>
-          {/* ─── 데스크톱: 시맨틱 테이블 (md 이상) ─── */}
-          <div className="hidden md:block bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-            <table className="w-full text-sm" aria-label="투자 일기 목록">
+          {/* ─── 게시판 테이블 (전 뷰포트 공통) ───
+              모바일에서는 보조 컬럼(번호·종목)을 숨기고 여백을 좁혀
+              가로 스크롤 없이 데스크톱과 동일한 테이블 형식을 유지한다. */}
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            <table className="w-full table-fixed text-sm" aria-label="투자 일기 목록">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <th
                     scope="col"
-                    className="w-12 px-4 py-3 text-center text-xs font-semibold text-gray-500 tracking-wide"
+                    className="hidden md:table-cell w-12 px-4 py-3 text-center text-xs font-semibold text-gray-500 tracking-wide"
                   >
                     번호
                   </th>
                   <th
                     scope="col"
-                    className="px-4 py-3 text-left text-xs font-semibold text-gray-500 tracking-wide"
+                    className="px-3 py-2.5 md:px-4 md:py-3 text-left text-xs font-semibold text-gray-500 tracking-wide"
                   >
                     제목
                   </th>
                   <th
                     scope="col"
-                    className="w-24 px-4 py-3 text-left text-xs font-semibold text-gray-500 tracking-wide"
+                    className="w-[68px] md:w-24 px-2 py-2.5 md:px-4 md:py-3 text-left text-xs font-semibold text-gray-500 tracking-wide"
                   >
                     결정
                   </th>
                   <th
                     scope="col"
-                    className="w-36 px-4 py-3 text-left text-xs font-semibold text-gray-500 tracking-wide"
+                    className="hidden md:table-cell w-36 px-4 py-3 text-left text-xs font-semibold text-gray-500 tracking-wide"
                   >
                     종목
                   </th>
                   <th
                     scope="col"
-                    className="w-32 px-4 py-3 text-right text-xs font-semibold text-gray-500 tracking-wide"
+                    className="w-[88px] md:w-32 px-3 py-2.5 md:px-4 md:py-3 text-right text-xs font-semibold text-gray-500 tracking-wide"
                   >
                     날짜
                   </th>
@@ -150,10 +152,10 @@ export default function JournalPage() {
                       onClick={() => router.push(`/journal/${e.id}`)}
                       className="hover:bg-gray-50 cursor-pointer transition-colors"
                     >
-                      <td className="px-4 py-3 text-center text-gray-400 text-xs tabular-nums">
+                      <td className="hidden md:table-cell px-4 py-3 text-center text-gray-400 text-xs tabular-nums">
                         {rowNum}
                       </td>
-                      <td className="px-4 py-3 max-w-0">
+                      <td className="px-3 py-2.5 md:px-4 md:py-3 max-w-0">
                         <Link
                           href={`/journal/${e.id}`}
                           className="font-medium text-gray-900 hover:text-blue-600 focus:outline-none focus:text-blue-600 focus:underline truncate block"
@@ -165,16 +167,16 @@ export default function JournalPage() {
                           {e.title}
                         </Link>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-2 py-2.5 md:px-4 md:py-3 whitespace-nowrap">
                         {dt && (
                           <span
-                            className={`inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full ${dt.color}`}
+                            className={`inline-flex items-center text-[11px] md:text-xs font-semibold px-1.5 md:px-2 py-0.5 rounded-full ${dt.color}`}
                           >
                             {dt.label}
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="hidden md:table-cell px-4 py-3">
                         <div className="flex flex-wrap gap-1">
                           {visibleTickers.map((t) => (
                             <span
@@ -191,7 +193,7 @@ export default function JournalPage() {
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-right text-gray-400 text-xs whitespace-nowrap tabular-nums">
+                      <td className="px-3 py-2.5 md:px-4 md:py-3 text-right text-gray-400 text-[11px] md:text-xs whitespace-nowrap tabular-nums">
                         {fmtDate(e.date)}
                       </td>
                     </tr>
@@ -199,56 +201,6 @@ export default function JournalPage() {
                 })}
               </tbody>
             </table>
-          </div>
-
-          {/* ─── 모바일: 2열 그리드 (md 미만) ─── */}
-          <div
-            className="md:hidden grid grid-cols-2 gap-2"
-            aria-label="투자 일기 목록"
-          >
-            {pageEntries.map((e) => {
-              const mood = getMood(e.mood);
-              const dt = getDecisionType(e.decisionType);
-              const tickers = parseTickers(e.tickers);
-              const visibleTickers = tickers.slice(0, 2);
-              const extraCount = tickers.length - visibleTickers.length;
-
-              return (
-                <Link
-                  key={e.id}
-                  href={`/journal/${e.id}`}
-                  className="flex flex-col bg-white border border-gray-200 rounded-xl p-3 min-h-[110px] hover:bg-gray-50 active:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 transition-colors overflow-hidden"
-                >
-                  <p className="text-[10px] text-gray-400 mb-1 tabular-nums">{fmtDate(e.date)}</p>
-                  <p className="text-sm font-medium text-gray-900 line-clamp-2 mb-auto leading-snug">
-                    {mood ? (
-                      <span aria-label={mood.label} className="mr-0.5">{mood.emoji}</span>
-                    ) : null}
-                    {e.title}
-                  </p>
-                  <div className="flex flex-wrap gap-1 mt-2 min-h-[18px]">
-                    {dt && (
-                      <span
-                        className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full leading-none ${dt.color}`}
-                      >
-                        {dt.label}
-                      </span>
-                    )}
-                    {visibleTickers.map((t) => (
-                      <span
-                        key={t}
-                        className="text-[10px] font-mono bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded leading-none"
-                      >
-                        {t}
-                      </span>
-                    ))}
-                    {extraCount > 0 && (
-                      <span className="text-[10px] text-gray-400 self-center">+{extraCount}</span>
-                    )}
-                  </div>
-                </Link>
-              );
-            })}
           </div>
 
           {/* 페이지네이션 (2페이지 이상일 때만) */}
