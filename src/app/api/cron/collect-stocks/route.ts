@@ -94,6 +94,12 @@ async function run(req: NextRequest, startOffset: number, acc: SliceAcc) {
       out.ok = false;
       out.collectError = String(err);
       sliceError = sliceError ?? String(err);
+      // collectAllStocks 전체가 throw(DB 장애 등)하면 result 가 없어 이 서브청크의
+      // 실패 건수가 집계되지 않는다(itemsFailed 과소 보고 → 감시 공백). 이 서브청크가
+      // 실제 처리하려던 종목 수만큼 실패로 집계한다. 유니버스 끝 경계에서 마지막
+      // 서브청크가 SUB 보다 작을 수 있으므로 남은 종목 수로 상한을 둔다.
+      const subSize = Math.min(SUB, totalStocks - offset);
+      sliceFailed += subSize;
       console.error(`[cron:collect-stocks] 서브청크 수집 실패 offset=${offset}:`, err);
     }
     offset += SUB;
