@@ -20,11 +20,21 @@ function freshAcc(): SliceAcc {
   return { startedAt: Date.now(), ok: 0, failed: 0, error: null };
 }
 
-// 슬라이스당 처리 종목 수.
-// PARALLEL=10, BATCH_DELAY=600ms 기준 한 슬라이스(=SLICE/10 서브배치)는
-// 외부 fetch 타임아웃(10s)을 감안해도 안전하게 타임아웃 한참 아래에서 끝난다.
-// 200종목 / 40 = 5 슬라이스로 전체 커버.
-const SLICE = 40;
+// 내부 서브청크 크기(한 번의 collectAllStocks 호출 단위).
+// PARALLEL=10 이므로 SUB=20 = 2 서브배치. 외부 fetch 타임아웃(10s) 최악 가정에도
+// 한 서브청크는 ~20s 안에 끝나 60s 한도 아래에서 안전하게 멈출 수 있다.
+const SUB = 20;
+
+// 한 invocation 의 "드레인 예산"(wall-clock). 이 시간을 넘기면 새 서브청크를 시작하지
+// 않고 다음 invocation 으로 체이닝한다. SOFT_BUDGET(30s) + 최악 서브청크(~20s) ≈ 50s 로
+// 60s 한도 아래 안전. 정상(서브청크 ~5-8s)이면 invocation 당 ~100종목을 처리해
+// 200종목을 1~2 hop 으로 커버한다.
+//
+// 배경(2026-06-30 진단): 기존 SLICE=40 단일청크 + 5-hop 선형 self-chaining 은
+// 매일 정확히 3슬라이스(120종목)에서 죽었다(라이브 4일 연속 main.naver 호출=120/일,
+// stocks CollectionRun 미기록으로 확인). fire-and-forget 자기호출 체인이 ~4 hop 까지만
+// 살아남고 5번째 트리거가 결정론적으로 유실됐다. hop 수를 5→1~2 로 줄여 구조적 해소.
+const SOFT_BUDGET_MS = 30_000;
 
 export const dynamic = "force-dynamic";
 // 단일 슬라이스(40종목)는 보통 ~10-20s 로 끝난다. Hobby 한도(60s) 안에서 안전.
@@ -32,11 +42,14 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * 주가 스냅샷을 "슬라이스 단위"로 수집하는 self-chaining 엔드포인트(순수 수집).
+ * 주가 스냅샷을 "드레인 루프 + self-chaining" 으로 수집하는 엔드포인트(순수 수집).
  *
- * - offset/limit 으로 유니버스의 일부만 처리한다.
- * - 처리 후 남은 종목이 있으면 다음 슬라이스를 fire-and-forget 으로 트리거한다.
- *   → 어떤 단일 함수 실행도 SLICE 개 종목 이상을 처리하지 않으므로 504 구조적 해소.
+ * - startOffset 부터 SUB(20)종목 서브청크를 wall-clock 예산(SOFT_BUDGET_MS) 안에서
+ *   연속 처리한다. 한 invocation 이 정상적으로 ~80-100종목을 커버한다.
+ * - 예산 초과로 남은 종목이 있으면 다음 invocation 을 fire-and-forget 으로 트리거한다.
+ *   → 어떤 단일 함수 실행도 예산+최악서브청크(~50s)를 넘지 않아 60s 타임아웃 구조적 회피.
+ *   → 동시에 self-chaining hop 수를 5→1~2 로 줄여, fire-and-forget 자기호출 체인이
+ *     ~4 hop 까지만 살아남던 결정론적 부분적재(매일 120/200) 문제를 해소(2026-06-30 진단).
  * - 시총 유니버스 갱신은 이 핸들러에서 하지 않는다. 별도 `/api/cron/refresh-universe`
  *   가 갱신을 끝낸 뒤 이 핸들러의 offset 0 을 트리거한다(2026-06 분리). 유니버스+수집을
  *   한 invocation 에서 돌리면 60s 를 초과해 FUNCTION_INVOCATION_TIMEOUT 이 났기 때문.
@@ -47,29 +60,58 @@ export const maxDuration = 60;
  * 슬라이스를 500 으로 죽이지 않고 다음 슬라이스 트리거를 보장해 체인 생존을 유지하며,
  * 실패 원인을 응답/로그에 남겨(collectError/chainError) 관측 가능하게 한다.
  */
-async function run(req: NextRequest, offset: number, acc: SliceAcc) {
-  const out: Record<string, unknown> = { ok: true, offset, limit: SLICE };
+async function run(req: NextRequest, startOffset: number, acc: SliceAcc) {
+  const out: Record<string, unknown> = { ok: true, startOffset };
   let sliceOk = 0;
   let sliceFailed = 0;
+  let sliceProcessed = 0;
   let sliceError: string | null = null;
 
-  // 1. 주가 수집 — 실패해도 다음 슬라이스 체이닝은 계속한다.
+  // 처리 대상 유니버스 크기(rank 보유 우선). 드레인 루프 종료 판정에 사용.
+  let totalStocks: number;
   try {
-    const result = await collectAllStocks(undefined, { offset, limit: SLICE });
-    out.processed = result.total;
-    out.updated = result.updated;
-    out.skipped = result.skipped;
-    out.failed = result.failed.length;
-    sliceOk = result.updated;
-    sliceFailed = result.failed.length;
+    const rankedCount = await prisma.stock.count({ where: { rank: { not: null } } });
+    totalStocks = rankedCount > 0 ? rankedCount : await prisma.stock.count();
   } catch (err) {
-    out.ok = false;
-    out.collectError = String(err);
-    sliceError = String(err);
-    console.error(`[cron:collect-stocks] 슬라이스 수집 실패 offset=${offset}:`, err);
+    // 카운트 실패 시 보수적으로 startOffset+SUB 만 처리하고 다음 hop 으로 넘긴다.
+    totalStocks = startOffset + SUB + 1;
+    console.error(`[cron:collect-stocks] 유니버스 카운트 실패:`, err);
   }
+  out.totalStocks = totalStocks;
 
-  // 누산기 갱신(이 슬라이스 결과 반영) — 체이닝/기록 단계에서 사용.
+  // 1. 드레인 루프 — wall-clock 예산 안에서 SUB 단위 서브청크를 연속 처리한다.
+  //    이렇게 invocation 당 다수 종목(정상 ~100)을 처리해 self-chaining hop 수를
+  //    최소화(5→1~2)하고, 예산 초과 직전에 멈춰 60s 타임아웃을 구조적으로 회피한다.
+  const invStart = Date.now();
+  let offset = startOffset;
+  while (offset < totalStocks) {
+    try {
+      const result = await collectAllStocks(undefined, { offset, limit: SUB });
+      sliceProcessed += result.total;
+      sliceOk += result.updated;
+      sliceFailed += result.failed.length;
+    } catch (err) {
+      out.ok = false;
+      out.collectError = String(err);
+      sliceError = sliceError ?? String(err);
+      // collectAllStocks 전체가 throw(DB 장애 등)하면 result 가 없어 이 서브청크의
+      // 실패 건수가 집계되지 않는다(itemsFailed 과소 보고 → 감시 공백). 이 서브청크가
+      // 실제 처리하려던 종목 수만큼 실패로 집계한다. 유니버스 끝 경계에서 마지막
+      // 서브청크가 SUB 보다 작을 수 있으므로 남은 종목 수로 상한을 둔다.
+      const subSize = Math.min(SUB, totalStocks - offset);
+      sliceFailed += subSize;
+      console.error(`[cron:collect-stocks] 서브청크 수집 실패 offset=${offset}:`, err);
+    }
+    offset += SUB;
+    // 예산 초과면 새 서브청크를 시작하지 않고 남은 구간을 다음 invocation 에 넘긴다.
+    if (Date.now() - invStart >= SOFT_BUDGET_MS) break;
+  }
+  out.processed = sliceProcessed;
+  out.updated = sliceOk;
+  out.failed = sliceFailed;
+  out.endOffset = offset;
+
+  // 누산기 갱신(이 invocation 결과 반영) — 체이닝/기록 단계에서 사용.
   const nextAcc: SliceAcc = {
     startedAt: acc.startedAt,
     ok: acc.ok + sliceOk,
@@ -77,14 +119,11 @@ async function run(req: NextRequest, offset: number, acc: SliceAcc) {
     error: acc.error ?? sliceError,
   };
 
-  // 2. 다음 슬라이스 체이닝 — 현재 슬라이스 성패와 무관하게 남은 종목이 있으면 진행.
-  //    마지막 슬라이스(hasMore=false)에서만 잡 단위 집계 1행을 기록(§8-1).
+  // 2. 다음 invocation 체이닝 — 수집 성패와 무관하게 남은 종목이 있으면 진행.
+  //    마지막 hop(hasMore=false)에서만 잡 단위 집계 1행을 기록(§8-1).
   try {
-    const rankedCount = await prisma.stock.count({ where: { rank: { not: null } } });
-    const totalStocks = rankedCount > 0 ? rankedCount : await prisma.stock.count();
-    const nextOffset = offset + SLICE;
+    const nextOffset = offset;
     const hasMore = nextOffset < totalStocks;
-    out.totalStocks = totalStocks;
     out.nextOffset = hasMore ? nextOffset : null;
 
     if (hasMore) {
