@@ -21,7 +21,7 @@
 | `breakout` | 필터 on/off | false | bool |
 | `breakoutQuietDays` (N) | 조정 구간 길이(거래일) | 60 (~3개월) | 20·60·120 프리셋 |
 | `breakoutWindowDays` (M) | 돌파 인정 최근 구간(거래일) | 5 | 1·5·10 |
-| `breakoutTolerance` | 돌파 인정 허용오차(%) | 0.5 | 0~2 |
+| `breakoutTolerance` | 돌파 인정 허용오차(%) | 3 (2026-06-30 상향, §9) | 0~5 |
 | `breakoutQuietMaxRatio` | 조정 구간 상단 비율(%) | 80 | 60~95 |
 
 ### 1.3 엣지케이스
@@ -210,3 +210,36 @@ breakoutReason?: "insufficient_history" | "low_density" | null; // 판정 보류
 4. **[D-4 조정 깊이] `quietMaxRatio` 기본 80%, 고급 설정에서 사용자 조정 가능**(노출은 §8.4 "고급 설정" 접힘 안). 고점 대비 **20% 이상 조정**한 종목만 quiet로 인정 → 얕은 눌림이 아닌 의미 있는 조정 후 돌파에 집중. 범위 60~95%.
 
 > 위 결정으로 §3 알고리즘 의사코드는 다음을 반영해 갱신한다: (a) series를 거래일로 정규화, (b) `isBreakout = breakoutRecently AND quietOK AND price(breakoutDate) > priorMaxPrice`, (c) `priorMaxPrice = max(price(d) for d in quiet)`. AC-QUIET-BOUNDARY·AC-CONSOLIDATION-NOFLOOR·AC-PRIORMAX-UNIT·AC-NULL-SORT·AC-SPLIT-WARNING은 그대로 적용.
+
+---
+
+## 9. 기본 tolerance 상향 + 구조적 0건 검증 (2026-06-30, super)
+
+### 9.1 변경 내용 (PO 결정 "옵션 A — tolerance 상향")
+- **기본 `breakoutTolerance` 0.5% → 3%** (`route.ts` 클램프 default, `page.tsx` state·resetFilters default).
+- **UI 슬라이더 max 2% → 5%** 로 상향해 API 클램프(0~5)와 정렬(`page.tsx` 허용오차 슬라이더). 기본값 라벨도 "(기본 3%)"로 갱신.
+- 근거: 한국 종목은 신규 신고가일에도 종가가 장중고가(=`high52w` 분모) 대비 보통 2~4% 낮게 마감 → tolerance 0.5%(threshold 99.5%)면 교과서적 돌파도 `breakoutRecently`에서 탈락. 3%(threshold 97%)가 이 갭을 흡수. tolerance는 D-3 정의대로 "측정/반올림 오차 흡수" 용도이며 재터치 허용이 아님.
+
+### 9.2 🔴 라이브 검증 결과 — tolerance 단독으로는 기본값 0건이 해소되지 않음
+2026-06-30 라이브 DB(120종목, 정규화 후 거래일 73~78일) 기준 `evaluateBreakout`(D-3 포함) 매칭 건수:
+
+| 파라미터 | tol 2% | tol 3% | tol 5% |
+|---|---|---|---|
+| **기본 N60·M5·qmr80** | **0** | **0** | **0** |
+| N60·M5, qmr 85/90/95 | 0 | 0 | 0 |
+| N60·M10·(qmr 80~95) | 0 | 0 | 0 |
+| N60·M20·qmr85 | 1 | 1 | 1 |
+| N60·M20·qmr90 | 2 | 2 | 2 |
+| N60·M20·qmr95 | 3 | 7 | 9 |
+
+- **1차 병목은 tolerance가 아니라 `windowDays`(M=5)와 `quietMaxRatio`(80%)의 상호작용**이다. 기본 M=5에서는 qmr·tol을 어떻게 조합해도 0건. tolerance는 M=20·qmr≥90의 "생산적 구간"에서만 레버리지가 생김(qmr95/M20: tol2=3 → tol3=7 → tol5=9).
+- 원인(데이터 진단): 현재 신고가에 근접한 종목들은 직전 quiet 60거래일에도 이미 고점 근처(quietMax 95~100%)였다. 즉 "고점 대비 20%+ 조정(quietOK) 후 돌파" 패턴 자체가 ~78거래일(약 3.7개월) 백필 윈도 안에 거의 없어, `quietOK ∩ breakoutRecently = ∅`. tolerance를 10%까지 올려도 교집합이 비어 0건.
+- 브리핑의 "tol5·N60·M20·qmr95 → 17건"은 D-3(`price > priorMaxPrice`, 신규 경신) 도입 **이전** 측정치로 추정(현행 코드의 동일 조건은 9건, `bRec&newHigh`만 보면 17~22건과 일치).
+
+### 9.3 권장 후속 (PO 재검토 필요)
+tolerance 상향은 방향성은 옳고 생산적 구간 매칭을 늘리므로 유지하되, **기본값에서 비어 있지 않은 결과**를 내려면 아래 중 하나가 추가로 필요:
+1. **기본 `windowDays` M=5 → 20 상향** (돌파 인정 윈도를 "최근 1개월"로). 단독으로 가장 큰 효과.
+2. **기본 `quietMaxRatio` 80% → 90~95% 완화** (얕은 눌림도 조정으로 인정). M=20과 결합 시 3~9건.
+3. **백필 히스토리 연장**(2y→ 전 구간) 으로 진짜 "깊은 조정 후 돌파" 표본 확보 — 근본 해법.
+
+> 결론: 본 PR은 "옵션 A" 계약대로 tolerance만 상향했다. **기본 프리셋(M5/qmr80)은 여전히 0건**이며, 이는 데이터·M·qmr 구조 문제로 tolerance 범위 밖이다. UI의 "빈 결과" 카피(§8.4)가 이 상태를 사용자에게 안내하는 안전망 역할을 한다.

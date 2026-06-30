@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
   const breakoutParams: BreakoutParams = {
     quietDays:     clampInt(sp.get("breakoutQuietDays"),     60, 1, 252),
     windowDays:    clampInt(sp.get("breakoutWindowDays"),     5, 1, 60),
-    tolerance:     clampFloat(sp.get("breakoutTolerance"),  0.5, 0, 5),
+    tolerance:     clampFloat(sp.get("breakoutTolerance"),  3, 0, 5),
     quietMaxRatio: clampFloat(sp.get("breakoutQuietMaxRatio"), 80, 60, 95),
   };
 

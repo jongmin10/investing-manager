@@ -15,9 +15,10 @@ const BREAKOUT_QUIET_PRESETS = [
 ] as const;
 
 const BREAKOUT_WINDOW_PRESETS = [
-  { label: "오늘 돌파",     val: 1  },
-  { label: "이번 주 돌파",  val: 5  },
-  { label: "최근 2주 돌파", val: 10 },
+  { label: "오늘 돌파",       val: 1  },
+  { label: "이번 주 돌파",    val: 5  },
+  { label: "최근 2주 돌파",   val: 10 },
+  { label: "최근 1개월 돌파", val: 20 },
 ] as const;
 
 const MARKET_OPTIONS: { key: Market; label: string }[] = [
@@ -125,7 +126,7 @@ export default function ScreenerPage() {
   const [useBreakout,           setUseBreakout]           = useState(false);
   const [breakoutQuietDays,     setBreakoutQuietDays]     = useState(60);
   const [breakoutWindowDays,    setBreakoutWindowDays]    = useState(5);
-  const [breakoutTolerance,     setBreakoutTolerance]     = useState(0.5);
+  const [breakoutTolerance,     setBreakoutTolerance]     = useState(3);
   const [breakoutQuietMaxRatio, setBreakoutQuietMaxRatio] = useState(80);
   const [showBreakoutAdvanced,  setShowBreakoutAdvanced]  = useState(false);
 
@@ -144,6 +145,15 @@ export default function ScreenerPage() {
     const next = !useBreakout;
     setUseBreakout(next);
     if (!next && sortBy === "breakoutDate") setSortBy("high52wRatio");
+  }
+
+  // 추천 프리셋 — 라이브 데이터 검증 값(N60·M20·qmr95·tol3)
+  function applyRecommendedPreset() {
+    setBreakoutQuietDays(60);
+    setBreakoutWindowDays(20);
+    setBreakoutQuietMaxRatio(95);
+    setBreakoutTolerance(3);
+    setShowBreakoutAdvanced(true); // 변경된 고급 설정 값을 시각적으로 확인할 수 있도록 패널 열기
   }
 
   const hasFinancialFilter = revenueGrowthMin || opGrowthMin || netGrowthMin || opMarginMin || profitableOnly || revenueMin || dividendYieldMin;
@@ -235,7 +245,7 @@ export default function ScreenerPage() {
     setRevenueGrowthMin(""); setOpGrowthMin(""); setNetGrowthMin(""); setOpMarginMin(""); setDividendYieldMin("");
     setUseBreakout(false);
     setBreakoutQuietDays(60); setBreakoutWindowDays(5);
-    setBreakoutTolerance(0.5); setBreakoutQuietMaxRatio(80);
+    setBreakoutTolerance(3); setBreakoutQuietMaxRatio(80);
     setShowBreakoutAdvanced(false);
     if (sortBy === "breakoutDate") setSortBy("high52wRatio");
   }
@@ -423,10 +433,10 @@ export default function ScreenerPage() {
             <div className="pl-3 border-l-2 border-emerald-100 space-y-3 ml-1">
 
               {/* 조정 기간 프리셋 */}
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-col gap-1.5">
                 <span
                   id="breakout-quiet-label"
-                  className="text-xs font-medium text-gray-500 whitespace-nowrap w-16 shrink-0"
+                  className="text-xs font-medium text-gray-500"
                 >
                   조정 기간
                 </span>
@@ -453,10 +463,10 @@ export default function ScreenerPage() {
               </div>
 
               {/* 돌파 시점 프리셋 */}
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-col gap-1.5">
                 <span
                   id="breakout-window-label"
-                  className="text-xs font-medium text-gray-500 whitespace-nowrap w-16 shrink-0"
+                  className="text-xs font-medium text-gray-500"
                 >
                   돌파 시점
                 </span>
@@ -480,6 +490,24 @@ export default function ScreenerPage() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* 추천 프리셋 적용 버튼 */}
+              <div className="flex flex-col gap-1">
+                <button
+                  type="button"
+                  onClick={applyRecommendedPreset}
+                  aria-describedby="breakout-preset-desc"
+                  className="self-start flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 active:bg-amber-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+                >
+                  <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3l14 9-14 9V3z" />
+                  </svg>
+                  추천 프리셋 적용
+                </button>
+                <p id="breakout-preset-desc" className="text-[10px] text-gray-400 leading-snug">
+                  결과가 안 나올 때 — 라이브에서 약 7건 확인된 설정(1개월 돌파 · 상단 95%)을 한 번에 적용합니다.
+                </p>
               </div>
 
               {/* 고급 설정 — aria-expanded 기반 접힘 */}
@@ -515,11 +543,11 @@ export default function ScreenerPage() {
                       <input
                         id="breakout-tolerance"
                         type="range"
-                        min={0} max={2} step={0.1}
+                        min={0} max={5} step={0.1}
                         value={breakoutTolerance}
                         onChange={(e) => setBreakoutTolerance(Number(e.target.value))}
                         aria-valuemin={0}
-                        aria-valuemax={2}
+                        aria-valuemax={5}
                         aria-valuenow={breakoutTolerance}
                         aria-valuetext={`${breakoutTolerance.toFixed(1)}% 허용 오차`}
                         className="w-24 accent-emerald-500"
@@ -527,7 +555,7 @@ export default function ScreenerPage() {
                       <span className="text-xs font-bold text-emerald-700 w-12">
                         {breakoutTolerance.toFixed(1)}%
                       </span>
-                      <span className="text-[10px] text-gray-400">(기본 0.5%)</span>
+                      <span className="text-[10px] text-gray-400 whitespace-nowrap hidden sm:inline">(기본 3%)</span>
                     </div>
                     {/* 조정 상단 비율 슬라이더 */}
                     <div className="flex items-center gap-3">
@@ -552,7 +580,7 @@ export default function ScreenerPage() {
                       <span className="text-xs font-bold text-emerald-700 w-12">
                         {breakoutQuietMaxRatio}%
                       </span>
-                      <span className="text-[10px] text-gray-400">(기본 80%)</span>
+                      <span className="text-[10px] text-gray-400 whitespace-nowrap hidden sm:inline">(기본 80%)</span>
                     </div>
                   </div>
                 )}

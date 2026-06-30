@@ -71,3 +71,4 @@ claude-dev.ps1
 # local dev scratch files
 /cdev.sh
 /elestock_sample.json
+.verify-screenshots/
