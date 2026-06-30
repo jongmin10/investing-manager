@@ -388,7 +388,7 @@ export default function ScreenerPage() {
             <span className="text-xs font-medium text-gray-700 whitespace-nowrap">52주 신고가</span>
             <div onClick={() => setUse52w((v) => !v)}
               className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${use52w ? "bg-blue-500" : "bg-gray-400"}`}>
-              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${use52w ? "translate-x-4" : "translate-x-0.5"}`} />
+              <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${use52w ? "translate-x-4" : "translate-x-0"}`} />
             </div>
             {use52w && (
               <div className="flex items-center gap-2">
@@ -422,8 +422,8 @@ export default function ScreenerPage() {
                 useBreakout ? "bg-emerald-500" : "bg-gray-400"
               }`}
             >
-              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                useBreakout ? "translate-x-4" : "translate-x-0.5"
+              <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                useBreakout ? "translate-x-4" : "translate-x-0"
               }`} />
             </button>
           </div>
