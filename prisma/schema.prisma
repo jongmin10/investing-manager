@@ -366,6 +366,20 @@ model ApiRequestLog {
   @@index([createdAt])
 }
 
+// 지수 일봉 종가 (2000~현재) — Yahoo 일봉(interval=1d) 백필. 라이브 IndicatorRecord와
+// 라이프사이클 분리(스펙 §4). 5종: KOSPI(^KS11)·KOSDAQ(^KQ11)·DOW(^DJI)·SP500(^GSPC)·NASDAQ(^IXIC).
+// 가격지수 close 기준(배당 미반영), 해외지수는 원통화 그대로(환율환산 없음).
+// 월수익률·MDD·주간 등 파생지표는 저장하지 않고 조회 시 이 일봉에서 리샘플링해 도출(스펙 §4·§5).
+model DailyIndexPrice {
+  id     String   @id @default(cuid())
+  series String   // "KOSPI" | "KOSDAQ" | "DOW" | "SP500" | "NASDAQ"
+  date   DateTime // 거래일 (UTC 자정 정규화, 거래소 로컬일 기준)
+  close  Float    // 종가
+
+  @@unique([series, date])
+  @@index([series, date])
+}
+
 // 투자 일기
 model JournalEntry {
   id           String   @id @default(cuid())
