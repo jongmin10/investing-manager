@@ -110,6 +110,7 @@ export interface ExportMetaResponse {
   items: { code: string; name: string }[];
   firstAvailable: string | null;
   latestConfirmedYm: string | null;
+  latestYm: string | null; // 잠정 포함 최신월 (기본 조회 종료월)
 }
 
 // BigInt(USD 원단위) → Number 변환은 metricValue 에서 수행. 수출액 규모(~1e11)는 2^53 이내라 안전.
@@ -274,9 +275,9 @@ export async function getExportRanking(
   };
 }
 
-/** 메타: 지원 품목목록 + 최초월 + 최신 확정월(UI 기본값·잠정 판별용). */
+/** 메타: 지원 품목목록 + 최초월 + 최신 확정월 + 최신월(잠정 포함, 기본 종료월). */
 export async function getExportMeta(): Promise<ExportMetaResponse> {
-  const [first, latestConfirmed] = await Promise.all([
+  const [first, latestConfirmed, latest] = await Promise.all([
     prisma.monthlyExport.findFirst({
       orderBy: { yearMonth: "asc" },
       select: { yearMonth: true },
@@ -286,10 +287,15 @@ export async function getExportMeta(): Promise<ExportMetaResponse> {
       orderBy: { yearMonth: "desc" },
       select: { yearMonth: true },
     }),
+    prisma.monthlyExport.findFirst({
+      orderBy: { yearMonth: "desc" },
+      select: { yearMonth: true },
+    }),
   ]);
   return {
     items: ITEM_GROUPS.map((g) => ({ code: g.code, name: g.name })),
     firstAvailable: first?.yearMonth ?? null,
     latestConfirmedYm: latestConfirmed?.yearMonth ?? null,
+    latestYm: latest?.yearMonth ?? null,
   };
 }

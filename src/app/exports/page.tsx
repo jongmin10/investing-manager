@@ -26,7 +26,8 @@ export default async function ExportsPage({
 
   const minMonth = meta.firstAvailable ?? "2015-01";
   const maxMonth = currentYearMonth();
-  const latest = meta.latestConfirmedYm ?? meta.firstAvailable ?? maxMonth;
+  // 기본 종료월 = 잠정 포함 최신월(6월 잠정도 기본 화면에 노출)
+  const latest = meta.latestYm ?? meta.latestConfirmedYm ?? meta.firstAvailable ?? maxMonth;
 
   const rawItem = typeof sp.item === "string" ? sp.item : DEFAULT_ITEM;
   const item = isItemCode(rawItem) ? rawItem : DEFAULT_ITEM;
