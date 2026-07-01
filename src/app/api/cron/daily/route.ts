@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { collectRealtimeData } from "@/lib/collector";
+import { collectRealtimeData, collectDailyIndexPrices } from "@/lib/collector";
 import { getBaseUrl, isAuthorizedCron, triggerNextSlice } from "@/lib/cron-self";
 import { recordCollectionRun } from "@/lib/collection-run";
 
@@ -45,6 +45,16 @@ export async function GET(req: NextRequest) {
     console.error("[cron] 경제지표 수집 오류:", err);
   }
 
+  // 1-b. 월수익률/MDD 원천 일봉 갱신 (DailyIndexPrice, 5대 지수 당일 1행 upsert — 경량)
+  try {
+    const daily = await collectDailyIndexPrices();
+    results.dailyIndex = { updated: daily.updated.length, failed: daily.failed.length };
+    console.log(`[cron] 지수 일봉 갱신: ${daily.updated.length}개`);
+  } catch (err) {
+    results.dailyIndexError = String(err);
+    console.error("[cron] 지수 일봉 갱신 오류:", err);
+  }
+
   // 2. 주가 스냅샷 수집 — 유니버스 갱신 단계를 먼저 트리거.
   //    refresh-universe 가 유니버스 갱신(~36s) 후 collect-stocks offset 0(순수 수집)을
   //    트리거한다. 유니버스+수집을 한 invocation 에서 돌리면 60s 초과로 타임아웃나므로 분리.
@@ -86,7 +96,7 @@ export async function GET(req: NextRequest) {
   // 계측(§5): 오케스트레이터가 "직접" 수행한 작업(경제지표 수집)을 1행으로 기록한다.
   // 다운스트림 슬라이스 잡(collect-stocks/collect-financials)은 각자 별도 1행을 남기므로
   // 여기서 중복 집계하지 않는다. 트리거/리포트 단계의 에러는 error 필드에 합쳐 관측성만 남긴다.
-  const errParts = ["indicatorsError", "reportError", "stocksError", "financialsError"]
+  const errParts = ["indicatorsError", "dailyIndexError", "reportError", "stocksError", "financialsError"]
     .map((k) => results[k])
     .filter((v): v is string => typeof v === "string");
   await recordCollectionRun("daily", startedAt, {

@@ -122,6 +122,80 @@ export async function collectRealtimeData(): Promise<CollectResult> {
   };
 }
 
+// ── 지수 일봉 종가 라이브 갱신 (DailyIndexPrice, 스펙 §5 "월 라이브 갱신") ──
+// 월수익률/MDD 원천 테이블에 당일 거래일 1행을 upsert 한다. 조회 시 월말 리샘플링이므로
+// 월말 별도 처리 불필요 — 매일 최신 거래일 close 만 채워두면 항상 최신 월말 종가가 도출된다.
+// DOW(^DJI)·NASDAQ 종합(^IXIC)은 REALTIME_SYMBOLS 에 없어 여기서 전용 매핑으로 5종을 수집한다.
+const DAILY_INDEX_SYMBOLS = [
+  { series: "KOSPI",  yahoo: "^KS11",  dp: 2 },
+  { series: "KOSDAQ", yahoo: "^KQ11",  dp: 2 },
+  { series: "DOW",    yahoo: "^DJI",   dp: 2 },
+  { series: "SP500",  yahoo: "^GSPC",  dp: 2 },
+  { series: "NASDAQ", yahoo: "^IXIC",  dp: 2 },
+] as const;
+
+interface DailyClose {
+  date: Date; // 거래일 UTC 자정 정규화 (거래소 로컬일 기준, gmtoffset 반영)
+  close: number;
+}
+
+// 거래소 로컬 벽시계 기준 거래일의 UTC 자정으로 정규화 (백필 스크립트와 동일 원칙, 월 경계 밀림 방지)
+async function fetchDailyClose(yahoo: string, dp: number): Promise<DailyClose | null> {
+  const encoded = encodeURIComponent(yahoo);
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=1d&includePrePost=false`;
+
+  const res = await loggedFetch(url, {
+    headers: YF_HEADERS,
+    cache: "no-store",
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) return null;
+
+  const json = await res.json();
+  const meta = json?.chart?.result?.[0]?.meta;
+  const price = meta?.regularMarketPrice;
+  const ts = meta?.regularMarketTime; // Unix seconds
+  if (typeof price !== "number" || typeof ts !== "number") return null;
+
+  const gmtoffset: number = meta?.gmtoffset ?? 0; // 초
+  const local = new Date((ts + gmtoffset) * 1000);
+  const dayStr = `${local.getUTCFullYear()}-${String(local.getUTCMonth() + 1).padStart(2, "0")}-${String(
+    local.getUTCDate()
+  ).padStart(2, "0")}`;
+  return { date: new Date(`${dayStr}T00:00:00.000Z`), close: parseFloat(price.toFixed(dp)) };
+}
+
+export interface DailyIndexResult {
+  updated: string[];
+  failed: string[];
+}
+
+export async function collectDailyIndexPrices(): Promise<DailyIndexResult> {
+  const results = await Promise.allSettled(
+    DAILY_INDEX_SYMBOLS.map((s) => fetchDailyClose(s.yahoo, s.dp).then((d) => ({ series: s.series, daily: d })))
+  );
+
+  const updated: string[] = [];
+  const failed: string[] = [];
+
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    if (r.status !== "fulfilled" || !r.value.daily) {
+      failed.push(DAILY_INDEX_SYMBOLS[i].series);
+      continue;
+    }
+    const { series, daily } = r.value;
+    await prisma.dailyIndexPrice.upsert({
+      where: { series_date: { series, date: daily.date } },
+      create: { series, date: daily.date, close: daily.close },
+      update: { close: daily.close },
+    });
+    updated.push(series);
+  }
+
+  return { updated, failed };
+}
+
 export async function getLastUpdated(): Promise<Date | null> {
   const r = await prisma.indicatorRecord.findFirst({
     where: { type: "KOSPI" },
