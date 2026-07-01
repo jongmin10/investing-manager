@@ -35,6 +35,78 @@ export interface TradeLine {
   impDlr: bigint;
 }
 
+// ── 순별(10일 단위) 잠정 수출 — data.go.kr 15157908 ──────────────────────────
+// 응답: 순번(priodDt "01~10"/"01~20"/"01~말")별 itemUsdAmt00(총수출)~itemUsdAmt10(10대 품목),
+// 단위 천 달러. 품목명은 응답에 없고 itemUsdAmtNN 이 고정 순서(0단계 실호출로 확정·교차검증).
+export const SUNBYEOL_ENDPOINT =
+  "https://apis.data.go.kr/1220000/prlstMmUtPrviExpAcrs/getPrlstMmUtPrviExpAcrs";
+
+// itemUsdAmtNN(01~10) → 내부 품목군 코드. 09 정밀기기는 대응 품목군 없어 제외.
+export const SUNBYEOL_ITEM_MAP: Record<number, string> = {
+  1: "SEMICON",    // 반도체
+  2: "STEEL",      // 철강
+  3: "AUTO",       // 승용차
+  4: "OIL_PROD",   // 석유제품
+  5: "WIRELESS",   // 무선통신기기
+  6: "SHIP",       // 선박
+  7: "AUTO_PARTS", // 자동차부품
+  8: "COMPUTER",   // 컴퓨터주변기기
+  // 9: 정밀기기 — 대응 품목군 없음(제외)
+  10: "HOME_APPL", // 가전
+};
+
+export interface SunbyeolResult {
+  yearMonth: string; // "YYYY-MM"
+  periodLabel: string; // 최신 순번 "01~20" 등 → "1~20일" 로 표기 변환
+  totalUsd: bigint; // 총수출(itemUsdAmt00) USD 원값
+  byItem: Map<string, bigint>; // 품목군코드 → USD 원값(천달러 ×1000)
+}
+
+function parseAmt(s: string | undefined): bigint {
+  const n = (s ?? "0").replace(/[^0-9]/g, "");
+  return n ? BigInt(n) * BigInt(1000) : BigInt(0); // 천달러 → USD 원값
+}
+
+/**
+ * 한 달의 순별 잠정 수출 — 최신 순번(가장 큰 priodDt) 사용. 데이터 없으면 null.
+ */
+export async function fetchSunbyeol(key: string, yyyymm: string): Promise<SunbyeolResult | null> {
+  const url =
+    `${SUNBYEOL_ENDPOINT}?serviceKey=${encodeURIComponent(key)}` +
+    `&strtYymm=${yyyymm}&endYymm=${yyyymm}&numOfRows=100`;
+  const res = await fetch(url, {
+    headers: { Accept: "application/xml, text/xml, */*" },
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!res.ok) throw new Error(`순별 ${yyyymm} HTTP ${res.status}`);
+  const xml = await res.text();
+  const rc = xml.match(/<resultCode>([^<]*)</)?.[1];
+  if (rc && rc !== "00") throw new Error(`순별 ${yyyymm} resultCode=${rc}`);
+
+  const items = (xml.match(/<item>[\s\S]*?<\/item>/g) ?? []);
+  if (items.length === 0) return null;
+  // 최신 순번 = priodDt 사전순 최대("01~말" 형태라 마지막 항목이 최신). 안전하게 마지막 사용.
+  const latest = items[items.length - 1];
+  const periodRaw = latest.match(/<priodDt>([^<]*)</)?.[1]?.trim() ?? ""; // "01~10" | "01~20" | "01~31"
+  const [ps, pe] = periodRaw.split("~").map((x) => x.trim());
+  const isFull = pe === "말" || Number(pe) >= 28;
+  const periodLabel = `${Number(ps) || 1}~${isFull ? "말" : Number(pe)}일`;
+
+  const byItem = new Map<string, bigint>();
+  for (let i = 1; i <= 10; i++) {
+    const code = SUNBYEOL_ITEM_MAP[i];
+    if (!code) continue;
+    const v = parseAmt(latest.match(new RegExp(`<itemUsdAmt${String(i).padStart(2, "0")}>([^<]*)<`))?.[1]);
+    if (v > BigInt(0)) byItem.set(code, v);
+  }
+  return {
+    yearMonth: `${yyyymm.slice(0, 4)}-${yyyymm.slice(4)}`,
+    periodLabel,
+    totalUsd: parseAmt(latest.match(/<itemUsdAmt00>([^<]*)</)?.[1]),
+    byItem,
+  };
+}
+
 function toBig(s: string): bigint {
   const n = s.trim().replace(/[^0-9-]/g, "");
   return n ? BigInt(n) : BigInt(0);

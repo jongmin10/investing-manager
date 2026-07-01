@@ -55,16 +55,17 @@ export async function GET(req: NextRequest) {
     console.error("[cron] 지수 일봉 갱신 오류:", err);
   }
 
-  // 1-c. 품목별 수출 월 확정 갱신 (관세청 GW). 매월 확정 창(KST 15~20일)에만 트리거.
-  //     외부 API 다수 호출이라 오케스트레이터에서 직접 await 하지 않고 전용 슬라이스로 분리.
+  // 1-c. 품목별 수출 갱신 (관세청). 발표일에만 트리거 — 순별 잠정(11/21/익월1일) +
+  //     월 확정창(15~20일). 외부 API 다수 호출이라 전용 슬라이스로 분리(직접 await 안 함).
   try {
     const kstDay = new Date(Date.now() + 9 * 3600 * 1000).getUTCDate();
-    if (kstDay >= 15 && kstDay <= 20) {
+    const isPublishDay = kstDay === 1 || kstDay === 11 || kstDay === 21 || (kstDay >= 15 && kstDay <= 20);
+    if (isPublishDay) {
       await triggerNextSlice(baseUrl, "/api/cron/collect-exports", {});
-      results.exports = { triggered: true };
-      console.log(`[cron] 품목별 수출 확정 갱신 트리거 (KST ${kstDay}일)`);
+      results.exports = { triggered: true, kstDay };
+      console.log(`[cron] 품목별 수출 갱신 트리거 (KST ${kstDay}일)`);
     } else {
-      results.exports = { skipped: `KST ${kstDay}일(확정창 15~20 아님)` };
+      results.exports = { skipped: `KST ${kstDay}일(발표일 아님)` };
     }
   } catch (err) {
     results.exportsError = String(err);
