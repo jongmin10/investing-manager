@@ -30,10 +30,6 @@ interface Point {
   provisional: boolean;
 }
 
-function xTick(ym: string): string {
-  return ym.endsWith("-01") ? ym.slice(0, 4) : "";
-}
-
 export default function ExportTrendChart({
   rows,
   metric,
@@ -57,6 +53,18 @@ export default function ExportTrendChart({
       })),
     [rows]
   );
+
+  // 연도 경계 눈금(각 연도 첫 데이터월)을 명시 지정 → ~8개로 솎아 연도 라벨 표시.
+  const yearTicks = useMemo(() => {
+    const seen = new Set<number>();
+    const firstOfYear: string[] = [];
+    for (const d of data) {
+      const y = +d.ym.slice(0, 4);
+      if (!seen.has(y)) { seen.add(y); firstOfYear.push(d.ym); }
+    }
+    const step = Math.max(1, Math.ceil(firstOfYear.length / 8));
+    return firstOfYear.filter((_, i) => i % step === 0);
+  }, [data]);
 
   if (data.length === 0) {
     return (
@@ -104,12 +112,12 @@ export default function ExportTrendChart({
           <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
           <XAxis
             dataKey="ym"
-            tickFormatter={xTick}
+            ticks={yearTicks}
+            tickFormatter={(ym: string) => ym.slice(0, 4)}
             tick={{ fontSize: 11, fill: "#6b7280" }}
             tickLine={false}
             axisLine={{ stroke: "#e5e7eb" }}
-            interval="preserveStartEnd"
-            minTickGap={24}
+            interval={0}
           />
           <YAxis
             yAxisId="left"
