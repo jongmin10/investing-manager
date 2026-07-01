@@ -1,5 +1,6 @@
 import {
   getMonthlyReturns,
+  getChartSeries,
   currentYearMonth,
   isMonthlySeries,
   isValidYearMonth,
@@ -27,7 +28,10 @@ export default async function ReturnsPage({
   const from = isValidYearMonth(rawFrom) ? rawFrom : DEFAULT_FROM;
   const to = isValidYearMonth(rawTo) ? rawTo : currentYearMonth();
 
-  const data = await getMonthlyReturns(series, from, to);
+  const [data, chart] = await Promise.all([
+    getMonthlyReturns(series, from, to),
+    getChartSeries(series, from, to),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -35,7 +39,7 @@ export default async function ReturnsPage({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
-            2000년 이후 월별 수익률
+            2000년 이후 지수 수익률
           </h1>
           <p className="text-sm text-gray-500 mt-1">
             배당 미반영 · 가격수익률 기준 · 지수 종가(Yahoo Finance)
@@ -50,8 +54,12 @@ export default async function ReturnsPage({
       {/* 연×월 히트맵 */}
       <ReturnsHeatmap rows={data.rows} firstAvailable={data.firstAvailable} />
 
-      {/* 누적 수익률 라인 차트 (클라이언트, Recharts 지연 로드) */}
-      <CumulativeChart rows={data.rows} series={series} />
+      {/* 누적 수익률 라인 차트 (클라이언트, Recharts 지연 로드) — 구간 짧으면 일단위 자동 */}
+      <CumulativeChart
+        points={chart.points}
+        granularity={chart.granularity}
+        series={series}
+      />
       {/* 면책조항은 layout.tsx footer 에서 전역 렌더 — 페이지 중복 제거 */}
     </div>
   );

@@ -48,6 +48,29 @@ export interface MonthlyReturnsResponse {
   summary: MonthlySummary;
 }
 
+// 누적 수익률 차트용 시계열. 구간이 짧으면 일단위, 길면 월단위로 적응.
+export type ChartGranularity = "daily" | "monthly";
+export interface ChartPoint {
+  t: string; // 일단위="YYYY-MM-DD", 월단위="YYYY-MM"
+  close: number;
+}
+export interface ChartSeries {
+  granularity: ChartGranularity;
+  points: ChartPoint[];
+}
+// 일단위로 렌더할 최대 포인트 수(≈3.2년 거래일). 초과 구간은 월말 리샘플링으로 폴백.
+export const CHART_DAILY_MAX_POINTS = 800;
+
+// from/to("YYYY-MM") → [월초, 다음달1일) UTC 범위. 저장 date(UTC 자정)와 정합.
+function monthRangeUtc(from: string, to: string): { start: Date; endExcl: Date } {
+  const [fy, fm] = from.split("-").map(Number);
+  const [ty, tm] = to.split("-").map(Number);
+  return {
+    start: new Date(Date.UTC(fy, fm - 1, 1)),
+    endExcl: new Date(Date.UTC(tm === 12 ? ty + 1 : ty, tm === 12 ? 0 : tm, 1)),
+  };
+}
+
 // 거래일 date → "YYYY-MM" (백필이 UTC 자정 정규화해 저장하므로 UTC getter 사용)
 function ymOf(date: Date): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
@@ -146,10 +169,7 @@ export async function getMonthlyReturns(
   to: string
 ): Promise<MonthlyReturnsResponse> {
   // from 월초 ~ to 월말(다음달 1일 미만) 범위. UTC 자정 정규화된 date 와 정합.
-  const [fy, fm] = from.split("-").map(Number);
-  const [ty, tm] = to.split("-").map(Number);
-  const rangeStart = new Date(Date.UTC(fy, fm - 1, 1));
-  const rangeEndExcl = new Date(Date.UTC(tm === 12 ? ty + 1 : ty, tm === 12 ? 0 : tm, 1)); // to 다음달 1일
+  const { start: rangeStart, endExcl: rangeEndExcl } = monthRangeUtc(from, to);
 
   const [daily, firstRow] = await Promise.all([
     prisma.dailyIndexPrice.findMany({
@@ -184,4 +204,40 @@ export async function getMonthlyReturns(
     rows,
     summary: { ...buildSummary(rows), mdd: computeMdd(daily) },
   };
+}
+
+/**
+ * 누적 수익률 차트용 시계열 조회 (기간 적응 해상도).
+ *   - [from월초, to월말] 일봉을 읽어 거래일 수가 CHART_DAILY_MAX_POINTS 이하이면
+ *     일단위(daily) 그대로, 초과하면 월말 리샘플링(monthly)으로 반환.
+ *   - 정규화(시작=100)는 렌더 측(CumulativeChart)에서 수행. 여기선 close 원값만 제공.
+ *   - "특정 달"처럼 좁은 구간을 고르면 자동으로 일단위가 되어 월중 움직임이 보인다.
+ */
+export async function getChartSeries(
+  series: MonthlySeries,
+  from: string,
+  to: string
+): Promise<ChartSeries> {
+  const { start, endExcl } = monthRangeUtc(from, to);
+  const daily = await prisma.dailyIndexPrice.findMany({
+    where: { series, date: { gte: start, lt: endExcl } },
+    orderBy: { date: "asc" },
+    select: { date: true, close: true },
+  });
+
+  if (daily.length <= CHART_DAILY_MAX_POINTS) {
+    return {
+      granularity: "daily",
+      points: daily.map((p) => ({ t: ymdOf(p.date), close: p.close })),
+    };
+  }
+
+  // 월말 리샘플링(각 연-월 마지막 거래일 close). daily 오름차순 → 덮어쓰면 마지막이 남는다.
+  const lastCloseByMonth = new Map<string, number>();
+  for (const p of daily) lastCloseByMonth.set(ymOf(p.date), p.close);
+  const points = [...lastCloseByMonth.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([t, close]) => ({ t, close }));
+
+  return { granularity: "monthly", points };
 }
