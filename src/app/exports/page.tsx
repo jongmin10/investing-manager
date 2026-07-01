@@ -64,7 +64,8 @@ export default async function ExportsPage({
           to={to}
           metric={metric}
           minMonth={minMonth}
-          maxMonth={latest}
+          maxMonth={maxMonth}
+          latestMonth={latest}
         />
       </div>
 

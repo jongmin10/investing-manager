@@ -17,6 +17,7 @@ export default function ExportControls({
   metric,
   minMonth,
   maxMonth,
+  latestMonth,
 }: {
   items: { code: string; name: string }[];
   item: string;
@@ -24,7 +25,8 @@ export default function ExportControls({
   to: string;
   metric: string;
   minMonth: string;
-  maxMonth: string; // 최신 확정 데이터월 (미래 빈 월 선택 방지 + 프리셋 정합)
+  maxMonth: string; // 선택 가능 상한(현재월) — 진행 중인 최근월도 선택 허용
+  latestMonth: string; // 데이터 최신 확정월 — 프리셋 종료 기준(빈 월로 안 끝나게)
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -56,9 +58,9 @@ export default function ExportControls({
   }
 
   const presets = [
-    { label: "전체", from: minMonth, to: maxMonth },
-    { label: "최근 5년", from: shiftYears(maxMonth, -5, minMonth), to: maxMonth },
-    { label: "최근 3년", from: shiftYears(maxMonth, -3, minMonth), to: maxMonth },
+    { label: "전체", from: minMonth, to: latestMonth },
+    { label: "최근 5년", from: shiftYears(latestMonth, -5, minMonth), to: latestMonth },
+    { label: "최근 3년", from: shiftYears(latestMonth, -3, minMonth), to: latestMonth },
   ];
 
   return (
