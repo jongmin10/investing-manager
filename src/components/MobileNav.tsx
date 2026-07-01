@@ -15,6 +15,7 @@ const PRIMARY_TABS = [
 const MORE_ITEMS = [
   { href: "/tracker",            icon: "📈", label: "수익률 트래커" },
   { href: "/returns",            icon: "📉", label: "지수 수익률"   },
+  { href: "/exports",            icon: "🚢", label: "품목별 수출"   },
   { href: "/calculator",         icon: "🧮", label: "연금 계산기"  },
   { href: "/journal",            icon: "📔", label: "투자 일기"    },
   { href: "/gurus",              icon: "🏆", label: "대가 13F"     },

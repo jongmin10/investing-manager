@@ -380,6 +380,25 @@ model DailyIndexPrice {
   @@index([series, date])
 }
 
+// 월별 품목별 수출(입) 실적 — 관세청 OpenAPI(품목별 GW + 순별 10일 잠정치) 집계.
+// exportUsd/importUsd 는 USD 원단위 정수(BigInt): 순별=천달러→×1000, GW=단위 확정 후 정규화(스펙 §4).
+// 당월 진행분은 순별로 provisional=true, 익월 15일경 GW 확정치가 같은 (itemCode,yearMonth) 행을
+// provisional=false 로 덮어써 자연 전환. YoY·무역수지는 저장하지 않고 조회 시 계산(스펙 §4·§5).
+model MonthlyExport {
+  id          String   @id @default(cuid())
+  itemCode    String   // 내부 품목군 코드 ("SEMICON","AUTO","OIL_PROD","ETC" …)
+  itemName    String   // 표시명 ("반도체")
+  yearMonth   String   // "YYYY-MM"
+  exportUsd   BigInt   // 수출액 USD 원단위(정수)
+  importUsd   BigInt?  // 수입액 USD 원단위(옵션)
+  provisional Boolean  @default(false) // 순별 잠정(true) vs GW 확정(false)
+  periodLabel String?  // 잠정 기준구간 "1~20일" (확정이면 null)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([itemCode, yearMonth])
+  @@index([yearMonth])
+}
+
 // 투자 일기
 model JournalEntry {
   id           String   @id @default(cuid())
