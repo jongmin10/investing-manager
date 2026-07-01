@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { EXPORT_GROUPS, collectGroup } from "@/lib/exports-hs";
+import { EXPORT_GROUPS, collectGroup, fetchMonthTotal } from "@/lib/exports-hs";
+import { TOTAL_CODE } from "@/lib/exports";
 
 // 최근 N개월(정정 흡수) 재조회 → MonthlyExport upsert(provisional=false).
 // GW 확정 갱신용(매월 15일경 전월 확정 + 최근월 정정). 순별 잠정은 별도(데이터셋 확정 후).
@@ -71,5 +72,29 @@ export async function collectExportsRecent(monthsBack = 3): Promise<ExportCollec
       result.failed.push({ code: g.code, error: (e as Error).message });
     }
   }
+
+  // 월 총수출(TOTAL) 갱신 — 커버율 계산용. 확정월만 저장(미확정월은 총계 부재).
+  for (let ym = from; ym <= to; ym = nextYm(ym)) {
+    try {
+      const t = await fetchMonthTotal(key, ym);
+      if (!t) continue;
+      const yearMonth = `${ym.slice(0, 4)}-${ym.slice(4)}`;
+      await prisma.monthlyExport.upsert({
+        where: { itemCode_yearMonth: { itemCode: TOTAL_CODE, yearMonth } },
+        create: { itemCode: TOTAL_CODE, itemName: "총수출", yearMonth, exportUsd: t.exp, importUsd: t.imp, provisional: false, periodLabel: null },
+        update: { exportUsd: t.exp, importUsd: t.imp },
+      });
+      result.rowsUpserted++;
+    } catch (e) {
+      result.failed.push({ code: `${TOTAL_CODE}:${ym}`, error: (e as Error).message });
+    }
+  }
   return result;
+}
+
+// "YYYYMM" 다음 달
+function nextYm(ym: string): string {
+  let y = +ym.slice(0, 4), m = +ym.slice(4);
+  m++; if (m > 12) { m = 1; y++; }
+  return `${y}${String(m).padStart(2, "0")}`;
 }

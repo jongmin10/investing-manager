@@ -9,11 +9,6 @@ const METRICS = [
   { value: "balance", label: "무역수지" },
 ] as const;
 
-function currentMonth(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-}
-
 export default function ExportControls({
   items,
   item,
@@ -21,6 +16,7 @@ export default function ExportControls({
   to,
   metric,
   minMonth,
+  maxMonth,
 }: {
   items: { code: string; name: string }[];
   item: string;
@@ -28,10 +24,10 @@ export default function ExportControls({
   to: string;
   metric: string;
   minMonth: string;
+  maxMonth: string; // 최신 확정 데이터월 (미래 빈 월 선택 방지 + 프리셋 정합)
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const maxMonth = currentMonth();
 
   function navigate(next: { item?: string; from?: string; to?: string; metric?: string }) {
     const params = new URLSearchParams({

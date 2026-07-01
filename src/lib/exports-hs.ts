@@ -88,6 +88,36 @@ export async function fetchHs4(
   return parseTradeXml(xml);
 }
 
+/**
+ * 월 총수출/총수입 — hsSgn 생략 단월 조회의 grand "총계" 행(hsCode="-").
+ * 응답이 ~2MB 로 크므로 사용자 요청 경로가 아닌 수집(백필/cron)에서만 호출.
+ * 반환 없음(총계행 부재) 시 null.
+ */
+export async function fetchMonthTotal(
+  key: string,
+  yyyymm: string
+): Promise<{ exp: bigint; imp: bigint } | null> {
+  const url =
+    `${EXPORT_ENDPOINT}?serviceKey=${encodeURIComponent(key)}` +
+    `&strtYymm=${yyyymm}&endYymm=${yyyymm}`;
+  const res = await fetch(url, {
+    headers: { Accept: "application/xml, text/xml, */*" },
+    signal: AbortSignal.timeout(45000),
+  });
+  if (!res.ok) throw new Error(`총계 ${yyyymm} HTTP ${res.status}`);
+  const xml = await res.text();
+  const rc = xml.match(/<resultCode>([^<]*)</)?.[1];
+  if (rc && rc !== "00") throw new Error(`총계 ${yyyymm} resultCode=${rc}`);
+  const totalBlock = (xml.match(/<item>[\s\S]*?<\/item>/g) ?? []).find((b) =>
+    /<year>총계<\/year>/.test(b)
+  );
+  if (!totalBlock) return null;
+  return {
+    exp: toBig(totalBlock.match(/<expDlr>([^<]*)</)?.[1] ?? "0"),
+    imp: toBig(totalBlock.match(/<impDlr>([^<]*)</)?.[1] ?? "0"),
+  };
+}
+
 /** 품목군의 여러 HS4 · 여러 연창을 받아 (월)→{exp,imp} 로 합산. */
 export async function collectGroup(
   key: string,

@@ -8,33 +8,36 @@ export { currentYearMonth, isValidYearMonth };
  * hs 매핑은 disjoint partition 원칙(한 HS→한 품목군). 착수 0단계에서 실호출로 정밀화 예정.
  * "ETC"는 매핑되지 않은 잔여 흡수 버킷.
  */
+// HS→품목군 매핑(hs4)의 단일 소스는 수집 로직 exports-hs.ts(EXPORT_GROUPS). 여기선
+// 서비스/UI 가 쓰는 code·name 만 보유(hs 필드 중복 제거 — QA m1). ETC 는 랭킹 제외용.
 export interface ItemGroup {
   code: string;
   name: string;
-  hs: string[]; // 대표 HS 4단위 (수집 스크립트가 소유, 서비스층은 미사용)
 }
 
 export const ITEM_GROUPS: ItemGroup[] = [
-  { code: "SEMICON", name: "반도체", hs: ["8541", "8542"] },
-  { code: "AUTO", name: "자동차", hs: ["8703"] },
-  { code: "AUTO_PARTS", name: "자동차부품", hs: ["8708"] },
-  { code: "OIL_PROD", name: "석유제품", hs: ["2710"] },
-  { code: "PETROCHEM", name: "석유화학", hs: ["3901", "3902", "2902"] },
-  { code: "SHIP", name: "선박", hs: ["8901", "8905"] },
-  { code: "WIRELESS", name: "무선통신기기", hs: ["8517"] },
-  { code: "DISPLAY", name: "디스플레이", hs: ["8524"] },
-  { code: "STEEL", name: "철강", hs: ["7208", "7210", "7219"] },
-  { code: "COMPUTER", name: "컴퓨터", hs: ["8471"] },
-  { code: "MACHINE", name: "일반기계", hs: ["8479"] },
-  { code: "BIO", name: "바이오헬스", hs: ["3002", "3004"] },
-  { code: "BATTERY", name: "이차전지", hs: ["8507"] },
-  { code: "HOME_APPL", name: "가전", hs: ["8418", "8450"] },
-  { code: "TEXTILE", name: "섬유류", hs: ["6104", "6109", "5407"] },
-  { code: "ETC", name: "기타", hs: [] },
+  { code: "SEMICON", name: "반도체" },
+  { code: "AUTO", name: "자동차" },
+  { code: "AUTO_PARTS", name: "자동차부품" },
+  { code: "OIL_PROD", name: "석유제품" },
+  { code: "PETROCHEM", name: "석유화학" },
+  { code: "SHIP", name: "선박" },
+  { code: "WIRELESS", name: "무선통신기기" },
+  { code: "DISPLAY", name: "디스플레이" },
+  { code: "STEEL", name: "철강" },
+  { code: "COMPUTER", name: "컴퓨터" },
+  { code: "MACHINE", name: "일반기계" },
+  { code: "BIO", name: "바이오헬스" },
+  { code: "BATTERY", name: "이차전지" },
+  { code: "HOME_APPL", name: "가전" },
+  { code: "TEXTILE", name: "섬유류" },
+  { code: "ETC", name: "기타" },
 ];
 
 export const ITEM_CODES = ITEM_GROUPS.map((g) => g.code);
 export const DEFAULT_ITEM = "SEMICON";
+// 월 총수출/총수입 저장용 특수 코드(품목군 아님, 커버율 계산용). 랭킹·품목목록에서 제외.
+export const TOTAL_CODE = "TOTAL";
 
 export function isItemCode(v: string): boolean {
   return ITEM_CODES.includes(v);
@@ -95,7 +98,12 @@ export interface ExportRankingResponse {
   ym: string;
   metric: ExportMetric;
   rows: RankingRow[];
-  coverage: { coveredItems: number; totalItems: number; provisional: boolean };
+  coverage: {
+    coveredItems: number;
+    totalItems: number;
+    provisional: boolean;
+    coveragePct: number | null; // 15품목 수출합 / 월 총수출 (TOTAL 행 있을 때)
+  };
 }
 
 export interface ExportMetaResponse {
@@ -231,7 +239,7 @@ export async function getExportRanking(
         _hasValue: value !== null,
       };
     })
-    .filter((r) => r._hasValue && r.itemCode !== "ETC")
+    .filter((r) => r._hasValue && r.itemCode !== "ETC" && r.itemCode !== TOTAL_CODE)
     .sort((a, b) => b.value - a.value)
     .slice(0, top);
 
@@ -244,14 +252,24 @@ export async function getExportRanking(
     provisional: r.provisional,
   }));
 
+  // 커버율: 품목군 수출합 / 월 총수출(TOTAL 행). 총수출 기준(metric 무관) — "이 품목들이 총수출의 N%".
+  const totalRow = cur.find((r) => r.itemCode === TOTAL_CODE);
+  const groupExpSum = cur
+    .filter((r) => r.itemCode !== "ETC" && r.itemCode !== TOTAL_CODE)
+    .reduce((acc, r) => acc + Number(r.exportUsd), 0);
+  const totalExp = totalRow ? Number(totalRow.exportUsd) : 0;
+  const coveragePct =
+    totalRow && totalExp > 0 ? parseFloat(((groupExpSum / totalExp) * 100).toFixed(1)) : null;
+
   return {
     ym,
     metric,
     rows,
     coverage: {
-      coveredItems: cur.filter((r) => r.itemCode !== "ETC").length,
+      coveredItems: cur.filter((r) => r.itemCode !== "ETC" && r.itemCode !== TOTAL_CODE).length,
       totalItems: ITEM_GROUPS.filter((g) => g.code !== "ETC").length,
       provisional: cur.some((r) => r.provisional),
+      coveragePct,
     },
   };
 }

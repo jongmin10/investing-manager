@@ -53,6 +53,9 @@ export default async function ExportsPage({
           <p className="text-sm text-gray-500 mt-1">
             관세청 신고 미화금액(USD·수출 FOB/수입 CIF) · 당월은 잠정치(확정은 다음 달 15일경)
           </p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            품목군은 HS코드 기준 근사 — 산업부 공식 품목(MTI) 수치와 다를 수 있습니다.
+          </p>
         </div>
         <ExportControls
           items={meta.items}
@@ -61,6 +64,7 @@ export default async function ExportsPage({
           to={to}
           metric={metric}
           minMonth={minMonth}
+          maxMonth={latest}
         />
       </div>
 

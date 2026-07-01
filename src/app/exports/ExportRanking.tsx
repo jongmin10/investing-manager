@@ -45,7 +45,8 @@ export default function ExportRanking({
         </h2>
         <p className="text-xs text-gray-400 mt-0.5">
           {coverage.provisional ? "잠정 · " : ""}
-          {coverage.coveredItems}/{coverage.totalItems} 품목 반영
+          {coverage.coveredItems}/{coverage.totalItems} 품목
+          {coverage.coveragePct !== null ? ` · 총수출의 ${coverage.coveragePct}%` : ""}
         </p>
       </div>
 

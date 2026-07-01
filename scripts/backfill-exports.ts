@@ -9,7 +9,7 @@
  */
 import { PrismaClient } from "@prisma/client";
 import { readFileSync } from "fs";
-import { EXPORT_GROUPS, collectGroup } from "../src/lib/exports-hs";
+import { EXPORT_GROUPS, collectGroup, fetchMonthTotal } from "../src/lib/exports-hs";
 
 const prisma = new PrismaClient();
 
@@ -24,11 +24,42 @@ function ym(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function nextYm(yyyymm: string): string {
+  let y = +yyyymm.slice(0, 4), m = +yyyymm.slice(4);
+  m++; if (m > 12) { m = 1; y++; }
+  return `${y}${String(m).padStart(2, "0")}`;
+}
+
 async function main() {
   const key = readEnv("CUSTOMS_SERVICE_KEY");
   const argv = process.argv.slice(2);
   const from = (argv.find((a) => a.startsWith("--from="))?.split("=")[1] ?? "200001").replace("-", "");
   const to = (argv.find((a) => a.startsWith("--to="))?.split("=")[1] ?? ym(new Date())).replace("-", "");
+  // --totals: 월 총수출(TOTAL) 만 백필(커버율용). hsSgn 생략 총계행 → 응답 ~2MB/월.
+  if (argv.includes("--totals")) {
+    console.log(`총수출(TOTAL) 백필: ${from} ~ ${to}\n`);
+    let ok = 0;
+    for (let ym = from; ym <= to; ym = nextYm(ym)) {
+      try {
+        const t = await fetchMonthTotal(key, ym);
+        if (!t) { console.log(`  - ${ym} 총계 없음(미확정)`); continue; }
+        const yearMonth = `${ym.slice(0, 4)}-${ym.slice(4)}`;
+        await prisma.monthlyExport.upsert({
+          where: { itemCode_yearMonth: { itemCode: "TOTAL", yearMonth } },
+          create: { itemCode: "TOTAL", itemName: "총수출", yearMonth, exportUsd: t.exp, importUsd: t.imp, provisional: false, periodLabel: null },
+          update: { exportUsd: t.exp, importUsd: t.imp },
+        });
+        ok++;
+        if (ok % 12 === 0) console.log(`  ✓ ${yearMonth} 까지 ${ok}개월 (최근 총수출 $${(Number(t.exp) / 1e8).toFixed(0)}억)`);
+      } catch (e) {
+        console.error(`  ✗ ${ym} 실패:`, (e as Error).message);
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    console.log(`\n완료. TOTAL ${ok}개월.`);
+    return;
+  }
+
   const onlyArg = argv.find((a) => a.startsWith("--only="))?.split("=")[1];
   const only = onlyArg ? onlyArg.split(",").map((s) => s.trim().toUpperCase()) : null;
   const targets = only ? EXPORT_GROUPS.filter((g) => only.includes(g.code)) : EXPORT_GROUPS;
