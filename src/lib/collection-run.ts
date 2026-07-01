@@ -18,7 +18,8 @@ export type CollectionJob =
   | "gurus"
   | "daily"
   | "refresh-universe"
-  | "history";
+  | "history"
+  | "exports";
 
 export type RunStatus = "success" | "failed" | "partial";
 

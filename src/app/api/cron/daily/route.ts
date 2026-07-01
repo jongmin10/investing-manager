@@ -55,6 +55,22 @@ export async function GET(req: NextRequest) {
     console.error("[cron] 지수 일봉 갱신 오류:", err);
   }
 
+  // 1-c. 품목별 수출 월 확정 갱신 (관세청 GW). 매월 확정 창(KST 15~20일)에만 트리거.
+  //     외부 API 다수 호출이라 오케스트레이터에서 직접 await 하지 않고 전용 슬라이스로 분리.
+  try {
+    const kstDay = new Date(Date.now() + 9 * 3600 * 1000).getUTCDate();
+    if (kstDay >= 15 && kstDay <= 20) {
+      await triggerNextSlice(baseUrl, "/api/cron/collect-exports", {});
+      results.exports = { triggered: true };
+      console.log(`[cron] 품목별 수출 확정 갱신 트리거 (KST ${kstDay}일)`);
+    } else {
+      results.exports = { skipped: `KST ${kstDay}일(확정창 15~20 아님)` };
+    }
+  } catch (err) {
+    results.exportsError = String(err);
+    console.error("[cron] 수출 갱신 트리거 오류:", err);
+  }
+
   // 2. 주가 스냅샷 수집 — 유니버스 갱신 단계를 먼저 트리거.
   //    refresh-universe 가 유니버스 갱신(~36s) 후 collect-stocks offset 0(순수 수집)을
   //    트리거한다. 유니버스+수집을 한 invocation 에서 돌리면 60s 초과로 타임아웃나므로 분리.
@@ -96,7 +112,7 @@ export async function GET(req: NextRequest) {
   // 계측(§5): 오케스트레이터가 "직접" 수행한 작업(경제지표 수집)을 1행으로 기록한다.
   // 다운스트림 슬라이스 잡(collect-stocks/collect-financials)은 각자 별도 1행을 남기므로
   // 여기서 중복 집계하지 않는다. 트리거/리포트 단계의 에러는 error 필드에 합쳐 관측성만 남긴다.
-  const errParts = ["indicatorsError", "dailyIndexError", "reportError", "stocksError", "financialsError"]
+  const errParts = ["indicatorsError", "dailyIndexError", "exportsError", "reportError", "stocksError", "financialsError"]
     .map((k) => results[k])
     .filter((v): v is string => typeof v === "string");
   await recordCollectionRun("daily", startedAt, {
