@@ -70,8 +70,9 @@ function calcReturn(cagr: number, years: number) {
 }
 
 // m3: 부호 포함 퍼센트 표기 (recalc로 음수 CAGR 유입 시 "+−5%" 방지)
+// 천단위 구분자로 큰 숫자 가독성 확보 + 자릿수 경계에서 줄바꿈 지점 제공(모바일 중첩 방지).
 function signedPct(n: number): string {
-  return `${n >= 0 ? "+" : ""}${n}%`;
+  return `${n >= 0 ? "+" : ""}${n.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}%`;
 }
 
 // s2: 만원 단위 입력 파싱 (비숫자/NaN/음수 방어)
@@ -245,7 +246,7 @@ export default function PortfolioPage() {
   const rebalChartData = rebalRows.map((r) => ({ name: r.label, 현재: r.cur, 목표: r.tgt, color: r.color }));
 
   return (
-    <div className="space-y-5 max-w-3xl mx-auto px-4 sm:px-0">
+    <div className="space-y-5 max-w-3xl mx-auto">
 
       {/* ── 헤더 ── */}
       <div className="flex items-center justify-between">
@@ -253,7 +254,7 @@ export default function PortfolioPage() {
           <h1 className="text-2xl font-bold text-gray-900">투자전략 플래너</h1>
           <p className="text-sm text-gray-400 mt-0.5">현재 경제지표를 반영한 맞춤 자산 배분 제안</p>
         </div>
-        <Link href="/survey" className="text-sm text-blue-500 hover:text-blue-700 border border-blue-300 rounded-full px-4 py-1.5 hover:bg-blue-50 transition-colors">
+        <Link href="/survey" className="flex-shrink-0 whitespace-nowrap text-sm text-blue-500 hover:text-blue-700 border border-blue-300 rounded-full px-4 py-1.5 hover:bg-blue-50 transition-colors">
           재진단
         </Link>
       </div>
@@ -481,14 +482,15 @@ export default function PortfolioPage() {
             </p>
 
             {/* 행 1: 누적 수익률 + CAGR — 항상 표시 */}
+            {/* 큰 숫자가 옆 칸을 침범하지 않도록 min-w-0 + 반응형 폰트 + break-words(자릿수 경계 줄바꿈) */}
             <div className="grid grid-cols-2 gap-4 mb-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-[11px] text-slate-400 mb-0.5">누적 수익률 (명목)</p>
-                <p className={`text-3xl font-bold ${portfolioReturn >= 0 ? "text-emerald-400" : "text-red-400"}`}>{signedPct(portfolioReturn)}</p>
+                <p className={`text-2xl sm:text-3xl font-bold leading-tight tabular-nums break-words ${portfolioReturn >= 0 ? "text-emerald-400" : "text-red-400"}`}>{signedPct(portfolioReturn)}</p>
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-[11px] text-slate-400 mb-0.5">연평균 수익률 (CAGR)</p>
-                <p className={`text-3xl font-bold ${portfolioCagr >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                <p className={`text-2xl sm:text-3xl font-bold leading-tight tabular-nums break-words ${portfolioCagr >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                   {signedPct(portfolioCagr)}<span className="text-base font-normal text-slate-400">/년</span>
                 </p>
               </div>
@@ -496,21 +498,21 @@ export default function PortfolioPage() {
 
             {/* 행 2: 실질 누적 수익률 + 실질 CAGR — 항상 표시, cpi null이면 "물가 데이터 없음" */}
             <div className="grid grid-cols-2 gap-4 mb-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-[11px] text-slate-400 mb-0.5">실질 누적 수익률</p>
                 {realReturn !== null ? (
-                  <p className={`text-2xl font-bold ${realReturn >= 0 ? "text-violet-400" : "text-red-400"}`}>
-                    {realReturn >= 0 ? "+" : ""}{realReturn}%
+                  <p className={`text-xl sm:text-2xl font-bold leading-tight tabular-nums break-words ${realReturn >= 0 ? "text-violet-400" : "text-red-400"}`}>
+                    {signedPct(realReturn)}
                   </p>
                 ) : (
                   <p className="text-sm text-slate-500">물가 데이터 없음</p>
                 )}
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-[11px] text-slate-400 mb-0.5">실질 CAGR</p>
                 {realCagr !== null ? (
-                  <p className={`text-2xl font-bold ${realCagr >= 0 ? "text-violet-400" : "text-red-400"}`}>
-                    {realCagr >= 0 ? "+" : ""}{realCagr}%<span className="text-base font-normal text-slate-400">/년</span>
+                  <p className={`text-xl sm:text-2xl font-bold leading-tight tabular-nums break-words ${realCagr >= 0 ? "text-violet-400" : "text-red-400"}`}>
+                    {signedPct(realCagr)}<span className="text-base font-normal text-slate-400">/년</span>
                   </p>
                 ) : (
                   <p className="text-sm text-slate-500">물가 데이터 없음</p>
