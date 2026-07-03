@@ -140,6 +140,7 @@ export default function Sidebar() {
               <span className="w-1.5 h-1.5 rounded-full bg-white/70 flex-shrink-0" />
             )}
           </Link>
+          {/* 초대 관리: 현재 개방 가입이라 미사용 → 메뉴 숨김. 페이지·API(/admin/invitations)는 유지. */}
         </div>
       )}
 

@@ -49,6 +49,7 @@ model User {
   emailVerified DateTime?
   name          String?
   image         String?
+  passwordHash  String?                    // bcrypt 해시 — Credentials 가입자만 보유(OAuth/기존유저는 null). 절대 클라이언트로 반환 금지.
   createdAt     DateTime  @default(now())  // 최초 로그인 시각 — Credentials authorize 의 user.create 시점
   updatedAt     DateTime  @updatedAt
   lastLoginAt   DateTime?                  // 마지막 로그인 시각 — events.signIn 훅에서 갱신(기존 유저는 첫 갱신 전까지 null)
@@ -62,6 +63,21 @@ model User {
   favoriteEvents    FavoriteEvent[]
   portfolioHoldings PortfolioHolding[]
   journalEntries    JournalEntry[]
+}
+
+// 초대제 가입: 관리자가 발급한 1회용 초대 토큰. DB에 없는 이메일은 유효 초대가 있어야 가입 가능.
+// (기존 passwordHash==null 계정의 셀프 클레임은 초대 불요 — register 라우트 참고)
+model Invitation {
+  id           String    @id @default(cuid())
+  token        String    @unique              // 추측 불가 난수(32바이트 base64url). /signup?invite=<token>
+  email        String?                          // 특정 이메일 지정 초대(선택). null이면 토큰만으로 임의 이메일 가입 허용.
+  createdBy    String                           // 발급 관리자 이메일
+  createdAt    DateTime  @default(now())
+  expiresAt    DateTime?                         // 만료(선택). null이면 무기한.
+  usedAt       DateTime?                         // 1회용 소진 시각. 채워지면 재사용 불가.
+  usedByUserId String?                           // 소진한 사용자 id
+
+  @@index([email])
 }
 
 model Account {
