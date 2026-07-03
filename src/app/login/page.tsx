@@ -46,10 +46,11 @@ function LoginForm() {
       const ref = document.referrer;
       if (ref) {
         const refUrl = new URL(ref);
-        if (
-          refUrl.origin === window.location.origin &&
-          refUrl.pathname !== "/login"
-        ) {
+        // /login·/signup 은 인증 진입 페이지라 이전 페이지로 취급하지 않는다.
+        // (가입 완료 후 /signup→/login 전환 시 referrer=/signup 을 콜백으로 잡아
+        //  로그인 후 다시 회원가입 화면으로 돌아가던 버그 방지.)
+        const isAuthEntryPage = refUrl.pathname === "/login" || refUrl.pathname === "/signup";
+        if (refUrl.origin === window.location.origin && !isAuthEntryPage) {
           const internalPath = refUrl.pathname + refUrl.search;
           if (isSafeInternalUrl(internalPath)) {
             setCallbackUrl(internalPath);
