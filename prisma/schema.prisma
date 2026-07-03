@@ -50,6 +50,7 @@ model User {
   name          String?
   image         String?
   passwordHash  String?                    // bcrypt 해시 — Credentials 가입자만 보유(OAuth/기존유저는 null). 절대 클라이언트로 반환 금지.
+  blockedAt     DateTime?                  // 로그인 차단 시각 — 값이 있으면 authorize 거부(관리자가 사용자 목록에서 토글). null=정상.
   createdAt     DateTime  @default(now())  // 최초 로그인 시각 — Credentials authorize 의 user.create 시점
   updatedAt     DateTime  @updatedAt
   lastLoginAt   DateTime?                  // 마지막 로그인 시각 — events.signIn 훅에서 갱신(기존 유저는 첫 갱신 전까지 null)

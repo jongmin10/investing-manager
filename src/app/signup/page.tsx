@@ -1,11 +1,9 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-const DEFAULT_REDIRECT = "/portfolio";
 const PASSWORD_MIN_LENGTH = 8;
 
 function SignupForm() {
@@ -48,16 +46,10 @@ function SignupForm() {
         return;
       }
 
-      // 가입 성공 → 즉시 로그인(하드 내비게이션으로 세션 재조회, login 페이지와 동일 규약).
-      const signInRes = await signIn("credentials", { email, password, redirect: false });
-      if (signInRes?.ok) {
-        redirecting = true;
-        window.location.assign(DEFAULT_REDIRECT);
-      } else {
-        // 가입은 됐으나 자동 로그인 실패 → 로그인 페이지로 안내.
-        redirecting = true;
-        window.location.assign("/login");
-      }
+      // 가입 완료 → 자동 로그인하지 않고 로그인 화면으로 전환.
+      // 로그인 페이지가 성공 안내를 띄우고 이메일을 채우도록 쿼리로 전달.
+      redirecting = true;
+      window.location.assign(`/login?registered=1&email=${encodeURIComponent(email)}`);
     } catch (err) {
       console.error("가입 오류:", err);
       setError("서버 연결에 실패했습니다. 잠시 후 다시 시도해주세요.");

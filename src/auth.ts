@@ -26,9 +26,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const email = (credentials.email as string).trim().toLowerCase();
 
         const user = await prisma.user.findUnique({ where: { email } });
-        // 사용자 없음 / 비밀번호 미설정(OAuth·미클레임 계정) → 로그인 거부(자동 생성 안 함).
+        // 사용자 없음 / 비밀번호 미설정(OAuth·미클레임 계정) / 관리자가 차단한 계정 → 로그인 거부.
         // 실패 사유를 구분하지 않아 사용자 열거(enumeration)를 방지한다.
-        if (!user || !user.passwordHash) return null;
+        if (!user || !user.passwordHash || user.blockedAt) return null;
 
         const ok = await verifyPassword(credentials.password as string, user.passwordHash);
         if (!ok) return null;
