@@ -1,20 +1,19 @@
 /**
- * 지수 3년 일별 히스토리 백필 (IndicatorRecord) — 수동 실행용.
+ * 지수 장기 히스토리 백필 (IndicatorRecord) — 수동 실행용.
  *
  * 목적:
- *   recalc-etf-returns.mjs 는 IndicatorRecord(type) 의 일별 히스토리로 ETF 누적수익률(CAGR)을
- *   산출한다. 그런데 야간 cron(collectRealtimeData)은 "당일 1포인트"만 upsert 하므로,
- *   처음에는 히스토리가 비어 있어 CAGR 산출이 불가능하다. 이 스크립트가 Yahoo Finance 의
- *   3년치 일봉을 받아 IndicatorRecord 에 1회성으로 백필해 recalc 의 입력 데이터를 채운다.
+ *   recalc-etf-returns.mjs 는 IndicatorRecord(type) 히스토리 전체 구간의 CAGR로 ETF 장기
+ *   기대수익을 산출한다(규격: docs/portfolio-return-projection-review.md). 3년치만으로 산출한
+ *   단기 강세장 CAGR(예: KOSPI200 ~56%)을 30년까지 복리 투영하면 비현실적으로 커진다.
+ *   → 장기(20년+) 이력을 확보해 대표성 있는 CAGR을 산출하도록 백필한다.
  *
- *   특히 KOSPI200(type="KOSPI200", yahoo="^KS200")은 EtfReturn.KOSPI200(INDEX_CAGR)의
- *   indexType 대상이므로, 이 백필 → `node scripts/recalc-etf-returns.mjs --apply` 순서로
- *   실측 누적수익률을 반영한다.
- *
- * 동작:
- *   - 대상 지수의 3년 일봉을 Yahoo chart API(range=3y)로 가져온다.
- *   - 해당 type 의 기존 IndicatorRecord 를 전부 삭제 후 재삽입(멱등, 재실행 안전).
- *   - createMany 미지원/대량 환경을 고려해 삽입은 BATCH=20 의 병렬 create 로 처리한다.
+ * 동작(전체 재구축, 멱등):
+ *   - 과거 구간: Yahoo 월봉(1mo)으로 LONG_YEARS(=22년) 확보 → 장기 CAGR backbone.
+ *   - 최근 구간: Yahoo 일봉(1d)으로 최근 RECENT_YEARS(=3년) → 대시보드 지표(SP500·KRW_USD 등)
+ *     의 최근 차트 정밀도 유지. (월봉만 쓰면 최근 1개월 차트가 뭉개짐)
+ *   - 두 구간을 병합(월봉은 RECENT 시작 이전만, 그 이후는 일봉).
+ *   - KRW_USD 는 이상치 필터(isPlausibleKrwUsd)로 글리치 제거 후 적재.
+ *   - 해당 type 기존 IndicatorRecord 전부 삭제 후 재삽입.
  *
  * 대상 지정:
  *   - 인자 없으면 기본 KOSPI200 만 백필.
@@ -22,16 +21,19 @@
  *   - `--type=KOSPI200,SP500` 처럼 콤마구분 type 지정 가능.
  *
  * 실행:
- *   npx tsx scripts/backfill-index-history.ts                 # KOSPI200 만
- *   npx tsx scripts/backfill-index-history.ts --type=KOSPI200,SP500
- *   npx tsx scripts/backfill-index-history.ts --all
+ *   npx tsx scripts/backfill-index-history.ts --type=KOSPI200,SP500,NASDAQ100,KRW_USD
+ *   node scripts/recalc-etf-returns.mjs --apply   # 이후 CAGR 반영
  *
  * 주의: IndicatorRecord 외 다른 테이블은 절대 건드리지 않는다.
  */
 import { PrismaClient } from "@prisma/client";
-import { REALTIME_SYMBOLS } from "../src/lib/collector";
+import { REALTIME_SYMBOLS, isPlausibleKrwUsd } from "../src/lib/collector";
 
 const prisma = new PrismaClient();
+
+// 장기 백필 파라미터 (규격 §9.1)
+const LONG_YEARS = 22;   // 월봉 확보 구간(롤링 20년 창 + FX 매칭 버퍼 2년)
+const RECENT_YEARS = 3;  // 일봉 유지 구간(대시보드 최근 차트 정밀도)
 
 const YF_HEADERS = {
   "User-Agent":
@@ -41,16 +43,27 @@ const YF_HEADERS = {
   Referer: "https://finance.yahoo.com/",
 };
 
-const BATCH = 20; // SQLite/대량 병렬 upsert 안전 한계
+const BATCH = 500; // createMany 청크 크기(라이브 Postgres). 파라미터 한도 내 안전.
 
 interface HistoryPoint {
   date: Date;
   value: number;
 }
 
-async function fetchHistory(yahoo: string, dp: number): Promise<HistoryPoint[]> {
+// Yahoo chart API 조회 — interval 과 기간(period1~period2, Unix초)을 파라미터화.
+async function fetchHistory(
+  yahoo: string,
+  dp: number,
+  interval: "1d" | "1wk" | "1mo",
+  period1: Date,
+  period2: Date,
+): Promise<HistoryPoint[]> {
   const encoded = encodeURIComponent(yahoo);
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=3y&includePrePost=false`;
+  const p1 = Math.floor(period1.getTime() / 1000);
+  const p2 = Math.floor(period2.getTime() / 1000);
+  const url =
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}` +
+    `?interval=${interval}&period1=${p1}&period2=${p2}&includePrePost=false`;
 
   const res = await fetch(url, {
     headers: YF_HEADERS,
@@ -74,6 +87,34 @@ async function fetchHistory(yahoo: string, dp: number): Promise<HistoryPoint[]> 
       value: closes[i] != null ? parseFloat((closes[i] as number).toFixed(dp)) : NaN,
     }))
     .filter((p) => !isNaN(p.value));
+}
+
+// KRW_USD 이상치 순차 필터 — 직전 유효값 대비 급변/범위 이탈 제거(collector 판정 재사용).
+function filterFxOutliers(points: HistoryPoint[]): HistoryPoint[] {
+  const out: HistoryPoint[] = [];
+  let prev: number | null = null;
+  for (const p of points) {
+    if (!isPlausibleKrwUsd(p.value, prev)) continue;
+    out.push(p);
+    prev = p.value;
+  }
+  return out;
+}
+
+// 장기 월봉(과거) + 최근 일봉(최근 RECENT_YEARS) 병합 → 대표성 있는 장기 + 최근 정밀도 동시 확보.
+async function buildMergedSeries(type: string, yahoo: string, dp: number): Promise<HistoryPoint[]> {
+  const now = new Date();
+  const longStart = new Date(now); longStart.setFullYear(now.getFullYear() - LONG_YEARS);
+  const recentStart = new Date(now); recentStart.setFullYear(now.getFullYear() - RECENT_YEARS);
+
+  const monthly = await fetchHistory(yahoo, dp, "1mo", longStart, now);
+  const daily = await fetchHistory(yahoo, dp, "1d", recentStart, now);
+
+  // 월봉은 최근 구간 이전만, 최근 구간은 일봉으로.
+  let merged = [...monthly.filter((p) => p.date < recentStart), ...daily];
+  merged.sort((a, b) => a.date.getTime() - b.date.getTime());
+  if (type === "KRW_USD") merged = filterFxOutliers(merged);
+  return merged;
 }
 
 function resolveTargets(): { type: string; yahoo: string; dp: number }[] {
@@ -100,32 +141,29 @@ async function main() {
 
   for (const { type, yahoo, dp } of targets) {
     try {
-      const points = await fetchHistory(yahoo, dp);
+      const points = await buildMergedSeries(type, yahoo, dp);
       if (points.length === 0) {
         console.log(`  - ${type} (${yahoo}): 데이터 없음 → 스킵`);
         continue;
       }
 
-      // 기존 전체 삭제 후 재삽입(멱등)
+      // 기존 전체 삭제 후 재삽입(멱등). 라이브 Postgres → createMany 로 대량 삽입.
       await prisma.indicatorRecord.deleteMany({ where: { type } });
 
       let inserted = 0;
       for (let i = 0; i < points.length; i += BATCH) {
         const slice = points.slice(i, i + BATCH);
-        await Promise.all(
-          slice.map((p) =>
-            prisma.indicatorRecord.create({
-              data: { type, value: p.value, recordedAt: p.date },
-            })
-          )
-        );
-        inserted += slice.length;
+        const res = await prisma.indicatorRecord.createMany({
+          data: slice.map((p) => ({ type, value: p.value, recordedAt: p.date })),
+        });
+        inserted += res.count;
       }
 
       const first = points[0];
       const last = points[points.length - 1];
+      const spanY = (last.date.getTime() - first.date.getTime()) / (365.25 * 864e5);
       console.log(
-        `  ✓ ${type.padEnd(10)} ${inserted} 포인트 ` +
+        `  ✓ ${type.padEnd(10)} ${inserted} 포인트 · ${spanY.toFixed(1)}년 ` +
         `(${first.date.toISOString().slice(0, 10)} ~ ${last.date.toISOString().slice(0, 10)}, ` +
         `${first.value} → ${last.value})`
       );
