@@ -5,6 +5,14 @@ import { inviteState } from "@/lib/invite";
 
 export const dynamic = "force-dynamic";
 
+/** 최대 가입자수 — 환경변수 MAX_SIGNUPS(양의 정수). 미설정·비정상값이면 기본 100. */
+const DEFAULT_MAX_SIGNUPS = 100;
+function maxSignups(): number {
+  const raw = process.env.MAX_SIGNUPS;
+  const n = raw ? parseInt(raw, 10) : NaN;
+  return Number.isInteger(n) && n > 0 ? n : DEFAULT_MAX_SIGNUPS;
+}
+
 /**
  * POST /api/auth/register — 초대 기반 회원가입 (규격: docs/signup-auth-spec.md §5.1).
  *
@@ -55,6 +63,16 @@ export async function POST(req: Request) {
   }
 
   // ── 신규 가입: 개방 가입(초대는 선택) ─────────────────────────────────────────
+  // 최대 가입자수 제한(환경변수 MAX_SIGNUPS, 기본 100). 셀프 클레임은 신규가 아니라 제외.
+  const max = maxSignups();
+  const userCount = await prisma.user.count();
+  if (userCount >= max) {
+    return NextResponse.json(
+      { error: "가입 정원이 초과되어 더 이상 가입할 수 없습니다." },
+      { status: 403 },
+    );
+  }
+
   const passwordHash = await hashPassword(password);
 
   // 초대 토큰이 제공된 경우에만 검증한다. 제공됐는데 무효면 거부(오해 방지).
