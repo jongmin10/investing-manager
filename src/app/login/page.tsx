@@ -18,8 +18,11 @@ function isSafeInternalUrl(url: string): boolean {
 function LoginForm() {
   const searchParams = useSearchParams();
 
+  // 가입 완료 후 전환된 경우: ?registered=1&email=... → 안내 배너 + 이메일 프리필.
+  const justRegistered = searchParams.get("registered") === "1";
+
   const [callbackUrl, setCallbackUrl] = useState<string>(DEFAULT_REDIRECT);
-  const [email,       setEmail]       = useState("");
+  const [email,       setEmail]       = useState(() => searchParams.get("email") ?? "");
   const [password,    setPassword]    = useState("");
   const [loading,     setLoading]     = useState(false);
   const [error,       setError]       = useState("");
@@ -106,6 +109,11 @@ function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {justRegistered && (
+        <p className="text-sm text-green-700 bg-green-50 border border-green-100 rounded-xl px-4 py-3">
+          가입이 완료되었습니다. 방금 만든 계정으로 로그인해주세요.
+        </p>
+      )}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">이메일</label>
         <input
