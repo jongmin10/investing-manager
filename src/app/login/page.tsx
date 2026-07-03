@@ -20,7 +20,6 @@ function LoginForm() {
 
   const [callbackUrl, setCallbackUrl] = useState<string>(DEFAULT_REDIRECT);
   const [email,       setEmail]       = useState("");
-  const [name,        setName]        = useState("");
   const [password,    setPassword]    = useState("");
   const [loading,     setLoading]     = useState(false);
   const [error,       setError]       = useState("");
@@ -64,7 +63,7 @@ function LoginForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!email) return;
+    if (!email || !password) return;
     setLoading(true);
     setError("");
 
@@ -80,7 +79,6 @@ function LoginForm() {
     try {
       const res = await signIn("credentials", {
         email,
-        name,
         password,
         redirect: false,
       });
@@ -120,26 +118,13 @@ function LoginForm() {
         />
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          이름 <span className="text-gray-400 font-normal">(선택 · 첫 가입 시)</span>
-        </label>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="홍길동"
-          className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          비밀번호 <span className="text-gray-400 font-normal">(운영 환경)</span>
-        </label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">비밀번호</label>
         <input
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="공유 비밀번호"
+          placeholder="비밀번호"
+          required
           autoComplete="current-password"
           className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
         />
@@ -147,7 +132,7 @@ function LoginForm() {
       {error && <p className="text-sm text-red-500">{error}</p>}
       <button
         type="submit"
-        disabled={loading || !email}
+        disabled={loading || !email || !password}
         className="w-full bg-blue-500 text-white py-2.5 rounded-xl font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {loading ? "로그인 중..." : "이메일로 계속하기"}
@@ -169,8 +154,14 @@ export default function LoginPage() {
         <Suspense fallback={<div className="h-40 animate-pulse bg-gray-50 rounded-xl" />}>
           <LoginForm />
         </Suspense>
-        <div className="mt-6 text-center">
-          <Link href="/" className="text-sm text-gray-400 hover:text-gray-600">
+        <div className="mt-6 text-center space-y-2">
+          <p className="text-sm text-gray-500">
+            계정이 없으신가요?{" "}
+            <Link href="/signup" className="text-blue-500 hover:text-blue-600 font-medium">
+              회원가입
+            </Link>
+          </p>
+          <Link href="/" className="inline-block text-sm text-gray-400 hover:text-gray-600">
             ← 대시보드로 돌아가기
           </Link>
         </div>

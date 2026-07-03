@@ -1,6 +1,21 @@
 import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
+
+// 로컬/E2E 테스트 계정 (규격: docs/signup-auth-spec.md §9).
+// 개인 비밀번호 로그인 전환 후, e2e/auth.setup.ts 가 이 계정으로 로그인한다.
+const TEST_ACCOUNT = { email: "e2e-test@example.com", name: "E2E 테스트", password: "test-pass-1234" };
+
+async function seedTestAccount() {
+  const passwordHash = await bcrypt.hash(TEST_ACCOUNT.password, 10);
+  await prisma.user.upsert({
+    where: { email: TEST_ACCOUNT.email },
+    update: { passwordHash },
+    create: { email: TEST_ACCOUNT.email, name: TEST_ACCOUNT.name, passwordHash },
+  });
+  console.log(`✓ 테스트 계정 준비: ${TEST_ACCOUNT.email}`);
+}
 
 type IndicatorSeries = {
   type: string;
@@ -189,6 +204,8 @@ async function main() {
 
   await prisma.indicatorRecord.createMany({ data: records });
   console.log(`✓ ${records.length} records inserted.`);
+
+  await seedTestAccount();
 
   // 최신값 확인 출력
   console.log("\n── 최신 지표값 ──");

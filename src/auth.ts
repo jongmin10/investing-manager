@@ -4,42 +4,35 @@ import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import { prisma } from "@/lib/prisma";
 import { isAdminEmail } from "@/lib/admin";
+import { verifyPassword } from "@/lib/password";
+import { authConfig } from "@/auth.config";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  ...authConfig,
   adapter: PrismaAdapter(prisma),
-  session: { strategy: "jwt" },
-  trustHost: true,
-  pages: { signIn: "/login" },
   providers: [
-    // 로컬 개발: 이메일만 입력하면 로그인.
-    // 프로덕션: 공유 비밀번호(AUTH_LOGIN_PASSWORD) 검사 추가 — 무인증 관리자 로그인 방지.
+    // 사용자별 이메일 + 개인 비밀번호(bcrypt 해시) 로그인 (규격: docs/signup-auth-spec.md §5.3).
+    // authorize 는 존재하는 계정의 비밀번호만 검증한다 — 자동 가입 없음.
+    // 신규 사용자는 초대 기반 회원가입(POST /api/auth/register)으로 계정을 먼저 만든다.
     Credentials({
       name: "이메일로 계속하기",
       credentials: {
         email: { label: "이메일", type: "email", placeholder: "example@email.com" },
-        name: { label: "이름 (첫 로그인 시)", type: "text", placeholder: "홍길동" },
         password: { label: "비밀번호", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.email) return null;
+        if (!credentials?.email || !credentials?.password) return null;
+        // 가입(register)과 동일하게 정규화(trim + 소문자)해 대소문자 불일치로 인한 로그인 실패 방지.
+        const email = (credentials.email as string).trim().toLowerCase();
 
-        // 프로덕션 한정 공유 비밀번호 게이트 (1인 운영 도구 → 공유 비밀번호로 충분).
-        // 로컬 dev(NODE_ENV !== "production")는 개발 편의를 위해 이메일만으로 로그인.
-        if (process.env.NODE_ENV === "production") {
-          const expected = process.env.AUTH_LOGIN_PASSWORD;
-          // fail-closed: 비밀번호가 미설정이면 누구도 로그인 불가.
-          if (!expected) return null;
-          // 1인 도구이므로 타이밍 안전 비교 불필요 — 단순 일치 검사.
-          if ((credentials.password as string) !== expected) return null;
-        }
+        const user = await prisma.user.findUnique({ where: { email } });
+        // 사용자 없음 / 비밀번호 미설정(OAuth·미클레임 계정) → 로그인 거부(자동 생성 안 함).
+        // 실패 사유를 구분하지 않아 사용자 열거(enumeration)를 방지한다.
+        if (!user || !user.passwordHash) return null;
 
-        const email = credentials.email as string;
-        const name = (credentials.name as string) || email.split("@")[0];
+        const ok = await verifyPassword(credentials.password as string, user.passwordHash);
+        if (!ok) return null;
 
-        let user = await prisma.user.findUnique({ where: { email } });
-        if (!user) {
-          user = await prisma.user.create({ data: { email, name } });
-        }
         return { id: user.id, email: user.email, name: user.name };
       },
     }),

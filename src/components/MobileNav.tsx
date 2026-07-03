@@ -32,6 +32,7 @@ export default function MobileNav() {
   const { data: session, status } = useSession();
 
   // 관리자에게만 "API 상태" · "사용자 목록" 항목 노출
+  // (초대 관리: 현재 개방 가입이라 미사용 → 메뉴 숨김. 페이지·API는 유지.)
   const allMoreItems = [
     ...MORE_ITEMS,
     ...(session?.user?.isAdmin
