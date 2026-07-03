@@ -40,7 +40,11 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 const APPLY = process.argv.includes("--apply");
 const MIN_YEARS = 2; // 이보다 짧은 히스토리는 CAGR 신뢰 불가 → 스킵
-const FX_MATCH_DAYS = 5; // 지수 기준일 대비 환율 매칭 허용 범위(영업일/휴장일 보정)
+// 규격(docs/portfolio-return-projection-review.md §9): 전체 span이 아니라 "롤링 20년 창"으로 산출.
+// 단기 강세장 CAGR을 장기 투영하지 않도록, 최신 기준일에서 20년 전 지점을 base로 사용한다.
+const LOOKBACK_YEARS = 20;
+const LOW_CONFIDENCE_YEARS = 10; // 이보다 짧으면 저신뢰(경고 표기, 반영은 함)
+const FX_MATCH_DAYS = 20; // 지수 기준일 대비 환율 매칭 허용 범위(월봉 경계·휴장일 보정 위해 확대)
 
 // KRW 환산이 필요한 해외지수 → 적용할 환율 지표 type 매핑.
 // 값은 "1 USD = N KRW"(yahoo KRW=X)라서 상승 시 원화 약세 → 해외수익 증가.
@@ -92,8 +96,11 @@ async function main() {
       console.log(`  - ${t.key}: 지수(${t.indexType}) 히스토리 없음(${rows.length}) → 스킵 (시드값 ${t.cumulativeReturn}% 유지)`);
       continue;
     }
-    const first = rows[0];
     const last = rows[rows.length - 1];
+    // 롤링 20년 창: 최신 기준일에서 LOOKBACK_YEARS 전 지점(cutoff) 이상에서 가장 이른 포인트를 base로.
+    // 히스토리가 20년 미만이면 가장 이른 포인트(rows[0])가 자동 선택됨.
+    const cutoff = last.recordedAt.getTime() - LOOKBACK_YEARS * 365.25 * DAY_MS;
+    const first = rows.find((r) => r.recordedAt.getTime() >= cutoff) ?? rows[0];
     const years = (last.recordedAt.getTime() - first.recordedAt.getTime()) / (DAY_MS * 365.25);
     const indexMult = last.value / first.value; // 지수 자체(통화 그대로) 수익 배수
 
@@ -131,6 +138,8 @@ async function main() {
       : fxFailed
         ? `환율(${rateType}) 페어 매칭 실패(±${FX_MATCH_DAYS}일) → 시드값 보존`
         : null;
+    // 20년 미만이면 반영은 하되 저신뢰 경고(단기 강세장 왜곡 가능성).
+    const lowConf = !skipReason && years < LOW_CONFIDENCE_YEARS;
 
     console.log(
       `  - ${t.key} [${t.indexType}] ${years.toFixed(2)}y: ` +
@@ -138,6 +147,7 @@ async function main() {
       `원화 cum=${cum.toFixed(1)}% CAGR=${cagr.toFixed(1)}% ` +
       `(현재 시드 cum=${t.cumulativeReturn}% / ${t.returnYears}y)` +
       (fxInfo ? `\n      ${fxInfo}` : "") +
+      (lowConf ? `\n      ⚠ 저신뢰: 창 ${years.toFixed(1)}y < ${LOW_CONFIDENCE_YEARS}y (장기 대표성 부족 가능)` : "") +
       (skipReason ? `\n      → 스킵: ${skipReason}` : "")
     );
 

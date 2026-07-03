@@ -16,6 +16,19 @@ export const REALTIME_SYMBOLS = [
 
 export type RealtimeType = (typeof REALTIME_SYMBOLS)[number]["type"];
 
+// ── FX(KRW/USD) 이상치 판정 (범위 밴드 + 급변 필터) ──────────────────────────
+// Yahoo KRW=X 이력에 간헐적 글리치(예: 잘못된 틱으로 누적 134만% 스파이크)가 있어,
+// 해외 ETF 원화환산·환율 지표를 오염시킨다. 수집·백필 공통으로 아래 판정을 통과한 값만 적재한다.
+// 기준: 2003~ 실측 KRW/USD 범위(~900~1600)를 넉넉히 감싸는 밴드 + 직전 대비 20% 초과 급변 제외.
+export const FX_MIN = 800;
+export const FX_MAX = 2500;
+export const FX_MAX_JUMP = 0.2; // 직전 관측 대비 허용 변동률
+export function isPlausibleKrwUsd(value: number, prev?: number | null): boolean {
+  if (!Number.isFinite(value) || value < FX_MIN || value > FX_MAX) return false;
+  if (prev != null && prev > 0 && Math.abs(value - prev) / prev > FX_MAX_JUMP) return false;
+  return true;
+}
+
 export interface CollectResult {
   success: boolean;
   updated: string[];
@@ -79,6 +92,18 @@ export async function collectRealtimeData(): Promise<CollectResult> {
     const { type, dp, quote } = result.value;
     const rounded = parseFloat(quote.price.toFixed(dp));
     const marketTime = quote.marketTime;
+
+    // KRW_USD 이상치(글리치) 게이트 — 직전 관측 대비 급변/범위 이탈이면 적재하지 않는다.
+    if (type === "KRW_USD") {
+      const prev = await prisma.indicatorRecord.findFirst({
+        where: { type: "KRW_USD" },
+        orderBy: { recordedAt: "desc" },
+      });
+      if (!isPlausibleKrwUsd(rounded, prev?.value ?? null)) {
+        failed.push(type);
+        continue;
+      }
+    }
 
     // marketTime 기준 UTC 날짜 범위 계산
     const dayStr  = marketTime.toISOString().slice(0, 10);
