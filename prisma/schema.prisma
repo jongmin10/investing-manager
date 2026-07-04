@@ -122,6 +122,7 @@ model RiskProfile {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   riskType  String   // CONSERVATIVE | MODERATE_CONSERVATIVE | MODERATE | AGGRESSIVE | VERY_AGGRESSIVE
   answers   String   // JSON: 설문 답변 배열
+  targetReturn Float? // 연 목표 수익률(%). null = 성향 기반(RISK_TYPE) 모드, 설정 시 목표 기반(TARGET) 모드
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

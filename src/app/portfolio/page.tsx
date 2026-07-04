@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { ALLOCATION_RATIONALE, Allocation, EtfGroup, MarketSignal, RiskType } from "@/lib/portfolio";
+import { ALLOCATION_RATIONALE, Allocation, EtfGroup, GUARANTEED_CAGR, MarketSignal, RiskType } from "@/lib/portfolio";
 
 // ── M4: Recharts 컴포넌트 lazy-load (번들 최적화) ─────────────────────────
 const AllocationPieChart = dynamic(
@@ -27,7 +27,6 @@ const RebalanceBarChart = dynamic(
 );
 
 const YEAR_OPTIONS = [1, 3, 5, 10, 20, 30];
-const GUARANTEED_CAGR = 2.3;
 
 type Tab = "allocation" | "etf" | "returns" | "rebalancing";
 
