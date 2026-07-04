@@ -231,7 +231,7 @@ interface RawEtf {
 //   - API(route.ts)가 DB 조회 → 조립 → 응답에 etfGroups 포함. (page.tsx 후속 연동 권장)
 //
 // 아래 FALLBACK_ETF_RETURNS는 DB 조회 실패/누락 키 대비 안전망이며, 값은 시드(prisma/seed-etf.ts)와
-// 동일하다. getEtfRecommendations() 동기 래퍼가 이 fallback을 사용한다(프론트 하위호환 유지).
+// 동일하다. (동기 래퍼 getEtfRecommendations는 v2에서 제거 — 모든 소비자는 API etfGroups 단일 소스 사용)
 //
 // ⚠️ 표시 주의:
 //   - 수치는 "과거 실적"이며 미래 수익을 보장하지 않는다.
@@ -447,14 +447,6 @@ export function buildEtfRecommendations(
     });
 }
 
-/**
- * 동기 하위호환 래퍼. DB 조회 없이 FALLBACK_ETF_RETURNS로 조립한다.
- * page.tsx(클라이언트)가 이 함수를 직접 호출 중이라 유지한다.
- * 권장: API 응답의 etfGroups를 소비하도록 프론트 전환(후속 작업).
- */
-export function getEtfRecommendations(riskType: RiskType, allocation: Allocation): EtfGroup[] {
-  return buildEtfRecommendations(riskType, allocation, FALLBACK_ETF_RETURNS);
-}
 
 // 설문 문항
 export const SURVEY_QUESTIONS = [

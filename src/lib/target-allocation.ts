@@ -165,6 +165,11 @@ function buildResult(
   };
 }
 
+/** 앵커별 기대수익 R(0..5) (%, 소수 2자리) — API targetSolver·미리보기 슬라이더 범위용 */
+export function getAnchorR(c: ClassCagrs): number[] {
+  return Array.from({ length: T_MAX + 1 }, (_, k) => round2(continuousR(k, c)));
+}
+
 /**
  * 목표 수익률 → 최소 위험 자산 배분 역산 (설계 §5.3)
  *
