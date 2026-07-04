@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { Allocation, EtfGroup, MarketSignal, RiskType } from "@/lib/portfolio";
+import { ALLOCATION_RATIONALE, Allocation, EtfGroup, MarketSignal, RiskType } from "@/lib/portfolio";
 
 // ── M4: Recharts 컴포넌트 lazy-load (번들 최적화) ─────────────────────────
 const AllocationPieChart = dynamic(
@@ -133,9 +133,9 @@ export default function PortfolioPage() {
   const [selectedYears,       setSelectedYears]       = useState(10);
   const [totalInvestmentInput, setTotalInvestmentInput] = useState("");
 
-  // 리밸런싱
+  // 리밸런싱 — currentAlloc은 데이터 로드 시 목표 배분으로 초기화된다 (아래 useEffect)
   const [rebalTotalInput, setRebalTotalInput] = useState("");
-  const [currentAlloc,    setCurrentAlloc]    = useState<Allocation>({ guaranteed: 0, bond: 0, mixed: 0, equity: 100 });
+  const [currentAlloc,    setCurrentAlloc]    = useState<Allocation>({ guaranteed: 0, bond: 0, mixed: 0, equity: 0 });
 
   // 탭 키보드 탐색
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -148,7 +148,7 @@ export default function PortfolioPage() {
         return r.json();
       })
       .then((d) => {
-        if (d && d.allocation) { setData(d); setLoading(false); }
+        if (d && d.allocation) { setData(d); setCurrentAlloc({ ...d.allocation }); setLoading(false); }
         else if (d) { setNoProfile(true); setLoading(false); }
       })
       .catch(() => {
@@ -367,6 +367,24 @@ export default function PortfolioPage() {
               </div>
             </div>
           </div>
+
+          {/* 배분 근거 */}
+          <div className="mt-4 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+            <h2 className="font-semibold text-gray-900 mb-3">이 배분의 근거</h2>
+            <ul className="space-y-2">
+              {ALLOCATION_RATIONALE[data.riskType].map((line, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-gray-600 leading-relaxed">
+                  <span className="text-blue-400 mt-0.5 flex-shrink-0">•</span>
+                  <span>{line}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-4 text-[11px] text-gray-400 leading-relaxed border-t border-gray-100 pt-3">
+              퇴직연금 DC·IRP 계좌는 위험자산(주식형 펀드 등) 투자 한도가 70%로 제한되며,
+              시장 신호가 반영되더라도 이 한도를 넘지 않도록 배분이 자동 조정됩니다.
+              예상 낙폭·기대수익은 과거 데이터 기반 추정치로 미래 성과를 보장하지 않습니다.
+            </p>
+          </div>
         </div>
       )}
 
@@ -394,7 +412,7 @@ export default function PortfolioPage() {
                     <p className="text-sm font-medium text-blue-800 mb-1">원리금보장 상품 이용</p>
                     <p className="text-xs text-blue-600 leading-relaxed">
                       ETF 대신 운용사의 원리금보장 상품(정기예금, GIC, 원리금보장형 ELB 등)을 선택하세요.
-                      원금과 이자가 보장되며 예금자보호 한도(5,000만원) 내에서 안전합니다.
+                      원금과 이자가 보장되며 예금자보호 한도(1억원) 내에서 안전합니다.
                     </p>
                   </div>
                 ) : (

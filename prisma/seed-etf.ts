@@ -38,22 +38,24 @@ type EtfReturnSeed = {
 
 const SEED: EtfReturnSeed[] = [
   // ── 지수 수집 대상 (INDEX_CAGR) ──────────────────────────
+  // 부트스트랩 값 = PR #42 롤링 20년 재계산 결과 스냅샷(2026-07). 신규 create 시에만 사용되고
+  // 기존 row 는 recalc-etf-returns.mjs --apply 실측값이 보존된다(아래 update 절 참조).
   {
     key: "KOSPI200", ticker: "069500", name: "KODEX 200",
-    cumulativeReturn: 315, returnYears: 10, returnPeriod: "10년",
-    source: "KOSPI200 지수 성과 (기준일 2026-06, 지수 기반 추정)",
+    cumulativeReturn: 640.6, returnYears: 19.92, returnPeriod: "20년 (지수 산출)",
+    source: "KOSPI200 지수 롤링 20년 성과 (기준일 2026-07, 지수 기반 추정)",
     updateMethod: "INDEX_CAGR", indexType: "KOSPI200",
   },
   {
     key: "SP500", ticker: "360750", name: "TIGER 미국S&P500",
-    cumulativeReturn: 198, returnYears: 6, returnPeriod: "6년 (설정이후)",
-    source: "S&P500 지수 성과 + KRW/USD 반영 (기준일 2026-06, 지수 기반 추정)",
+    cumulativeReturn: 837.3, returnYears: 19.92, returnPeriod: "20년 (지수 산출)",
+    source: "S&P500 지수 롤링 20년 성과 + KRW/USD 반영 (기준일 2026-07, 지수 기반 추정)",
     updateMethod: "INDEX_CAGR", indexType: "SP500",
   },
   {
     key: "NASDAQ100", ticker: "133690", name: "TIGER 나스닥100",
-    cumulativeReturn: 612, returnYears: 10, returnPeriod: "10년",
-    source: "NASDAQ100 지수 성과 + KRW/USD 반영 (기준일 2026-06, 지수 기반 추정)",
+    cumulativeReturn: 2932.1, returnYears: 19.92, returnPeriod: "20년 (지수 산출)",
+    source: "NASDAQ100 지수 롤링 20년 성과 + KRW/USD 반영 (기준일 2026-07, 지수 기반 추정)",
     updateMethod: "INDEX_CAGR", indexType: "NASDAQ100",
   },
   // ── 지수 미수집 (MANUAL) ─────────────────────────────────
