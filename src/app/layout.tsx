@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Disclaimer from "@/components/Disclaimer";
 import SessionProvider from "@/components/SessionProvider";
@@ -6,8 +6,17 @@ import Sidebar from "@/components/Sidebar";
 import MobileNav from "@/components/MobileNav";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://investing-manager-kf7m.vercel.app"),
   title: "연금 나침반",
   description: "DC/IRP 퇴직연금 관리를 위한 경제지표·종목 스크리너·투자 대가 포트폴리오 서비스",
+  applicationName: "연금 나침반",
+  // iOS "홈 화면에 추가" 시 앱 이름·standalone 표시
+  appleWebApp: { capable: true, title: "연금 나침반", statusBarStyle: "default" },
+};
+
+// themeColor는 Next.js 14+ 에서 viewport export로 분리됨 (브라우저 주소창·PWA 스플래시 색)
+export const viewport: Viewport = {
+  themeColor: "#3b82f6",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
