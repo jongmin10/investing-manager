@@ -312,6 +312,61 @@ const ETF_DEFS: Partial<Record<keyof Allocation, {
   },
 };
 
+// ── 자산군 기대 CAGR (목표 수익률 역산·성향 카드 표시용) ──────────────
+// 설계: docs/target-return-etf-recommendation-design.md §5.2, §6.1(targetSolver)
+
+/** 원리금보장 연 수익률(%) — 정기예금·GIC 수준. page.tsx 수익률 분석과 공유. */
+export const GUARANTEED_CAGR = 2.3;
+
+/** 성향 앵커 순서 (위험 오름차순). 목표 역산의 t축 인덱스와 1:1 대응. */
+export const RISK_TYPE_ORDER: RiskType[] = [
+  "CONSERVATIVE",
+  "MODERATE_CONSERVATIVE",
+  "MODERATE",
+  "AGGRESSIVE",
+  "VERY_AGGRESSIVE",
+];
+
+export interface ClassCagrs {
+  guaranteed: number;
+  bond: number;
+  mixed: number;
+  /** RISK_TYPE_ORDER 순 성향별 equity 세트의 가중 CAGR(%) */
+  equityByAnchor: number[];
+}
+
+// CAGR 환산 + 무효값 방어: cum ≤ -100(거듭제곱 밑수 음수) 또는 years ≤ 0(0 나눗셈)인
+// 값은 무효로 보고 fallback으로 대체한다. fallback까지 무효면 0.
+function safeCagr(key: string, returnMap: EtfReturnMap): number {
+  const valid = (v?: EtfReturnValue) =>
+    v && v.cumulativeReturn > -100 && v.returnYears > 0 ? v : undefined;
+  const ret = valid(returnMap[key]) ?? valid(FALLBACK_ETF_RETURNS[key]);
+  if (!ret) return 0;
+  return (Math.pow(1 + ret.cumulativeReturn / 100, 1 / ret.returnYears) - 1) * 100;
+}
+
+function weightedCagr(items: RawEtf[], returnMap: EtfReturnMap): number {
+  return items.reduce(
+    (s, it) => s + (it.weightInClass / 100) * safeCagr(it.returnKey, returnMap),
+    0
+  );
+}
+
+/**
+ * 자산군별 기대 CAGR(%). solveTargetAllocation(@/lib/target-allocation)의 입력이며,
+ * 클라이언트 실시간 미리보기용으로 API 응답(targetSolver.classCagr)에도 포함된다.
+ */
+export function getClassCagrs(returnMap: EtfReturnMap): ClassCagrs {
+  return {
+    guaranteed: GUARANTEED_CAGR,
+    bond: weightedCagr(ETF_DEFS.bond!.items, returnMap),
+    mixed: weightedCagr(ETF_DEFS.mixed!.items, returnMap),
+    equityByAnchor: RISK_TYPE_ORDER.map((rt) =>
+      weightedCagr(ETF_DEFS.equity!.byRisk![rt] ?? ETF_DEFS.equity!.items, returnMap)
+    ),
+  };
+}
+
 export interface EtfRecommendedItem {
   name: string;
   ticker: string;
