@@ -26,25 +26,30 @@ const MORE_ITEMS = [
   { href: "/alerts",             icon: "🔔", label: "알림 설정"    },
 ];
 
+// 관리자 항목 — isAdmin 에게만, 기본 접힘(톱니 클릭 시 노출)
+// (초대 관리: 현재 개방 가입이라 미사용 → 메뉴 숨김. 페이지·API는 유지.)
+const ADMIN_ITEMS = [
+  { href: "/admin/api-status", icon: "🖥️", label: "API 상태" },
+  { href: "/admin/users", icon: "👥", label: "사용자 목록" },
+];
+
 export default function MobileNav() {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
+  // 관리자 메뉴 기본 접힘 — 톱니 클릭 시 펼침(세션 한정)
+  const [showAdmin, setShowAdmin] = useState(false);
   const { data: session, status } = useSession();
 
-  // 관리자에게만 "API 상태" · "사용자 목록" 항목 노출
-  // (초대 관리: 현재 개방 가입이라 미사용 → 메뉴 숨김. 페이지·API는 유지.)
-  const allMoreItems = [
+  const isAdmin = !!session?.user?.isAdmin;
+  // 그리드에 실제 표시할 항목: 관리자가 톱니를 눌러 펼친 경우에만 관리자 항목 포함
+  const visibleMoreItems = [
     ...MORE_ITEMS,
-    ...(session?.user?.isAdmin
-      ? [
-          { href: "/admin/api-status", icon: "⚙️", label: "API 상태" },
-          { href: "/admin/users", icon: "👥", label: "사용자 목록" },
-        ]
-      : []),
+    ...(isAdmin && showAdmin ? ADMIN_ITEMS : []),
   ];
 
-  const isMoreActive = allMoreItems.some(({ href }) =>
-    href === "/" ? pathname === "/" : pathname.startsWith(href)
+  // "더보기" 탭 활성 판정은 관리자 경로도 항상 포함(접혀 있어도 현재 위치 반영)
+  const isMoreActive = [...MORE_ITEMS, ...(isAdmin ? ADMIN_ITEMS : [])].some(
+    ({ href }) => (href === "/" ? pathname === "/" : pathname.startsWith(href))
   );
 
   return (
@@ -60,7 +65,7 @@ export default function MobileNav() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="grid grid-cols-4 p-3 gap-2">
-              {allMoreItems.map(({ href, icon, label }) => {
+              {visibleMoreItems.map(({ href, icon, label }) => {
                 const isActive =
                   href === "/" ? pathname === "/" : pathname.startsWith(href);
                 return (
@@ -79,6 +84,24 @@ export default function MobileNav() {
                   </Link>
                 );
               })}
+
+              {/* 관리자 톱니 토글 — isAdmin 에게만. 클릭 시 관리자 항목 펼침/접힘 */}
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setShowAdmin((v) => !v)}
+                  aria-expanded={showAdmin}
+                  aria-label="관리자 메뉴"
+                  className={`flex flex-col items-center gap-1 py-3 rounded-xl text-[11px] font-medium transition-colors ${
+                    showAdmin
+                      ? "text-blue-400 bg-slate-800"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                  }`}
+                >
+                  <span className="text-xl leading-none">⚙️</span>
+                  <span className="text-center leading-tight">관리자</span>
+                </button>
+              )}
             </div>
 
             {/* 사용자 영역 — 로그아웃/로그인 (모바일에선 사이드바가 숨겨지므로 여기서 제공) */}
