@@ -29,12 +29,47 @@ export interface Allocation {
 }
 
 // 기본 자산 배분 (시장 신호 반영 전)
+// 실효 주식 비중(혼합형 look-through 포함)이 설문의 손실 허용 범위와 맞도록 설계:
+// 안정형 ~4% / 안정추구형 ~11% / 위험중립형 ~35% / 적극투자형 ~47% / 공격투자형 ~70%
 export const BASE_ALLOCATION: Record<RiskType, Allocation> = {
   CONSERVATIVE:          { guaranteed: 70, bond: 20, mixed: 10, equity: 0 },
   MODERATE_CONSERVATIVE: { guaranteed: 50, bond: 30, mixed: 15, equity: 5 },
-  MODERATE:              { guaranteed: 30, bond: 30, mixed: 25, equity: 15 },
+  MODERATE:              { guaranteed: 20, bond: 30, mixed: 25, equity: 25 },
   AGGRESSIVE:            { guaranteed: 15, bond: 20, mixed: 30, equity: 35 },
   VERY_AGGRESSIVE:       { guaranteed: 5,  bond: 10, mixed: 25, equity: 60 },
+};
+
+// 퇴직연금 DC·IRP의 위험자산(주식형 펀드 등) 투자 한도.
+// 채권혼합형(주식 40% 이하)은 안전자산, 적격 TDF는 한도 예외이므로 equity 자산군에만 적용한다.
+export const MAX_EQUITY_PCT = 70;
+
+// 성향별 배분 근거 (포트폴리오 화면 노출용)
+export const ALLOCATION_RATIONALE: Record<RiskType, string[]> = {
+  CONSERVATIVE: [
+    "원리금보장 70%: 예금자보호 한도(1억 원) 내 정기예금·GIC 중심으로 원금 손실 가능성을 사실상 제거합니다.",
+    "채권형 20% + 혼합형 10%: 금리 수익과 소폭의 초과수익을 더해 물가 상승에 따른 구매력 손실을 일부 방어합니다.",
+    "실효 주식 비중 약 4%(혼합형 내 주식 포함), 예상 최대 낙폭 2~3% — '손실 절대 불가' 성향에 부합합니다.",
+  ],
+  MODERATE_CONSERVATIVE: [
+    "원리금보장 50%: 자산의 절반을 확정금리에 두어 시장 급락 시에도 절반은 흔들리지 않습니다.",
+    "채권 30%·혼합 15%·주식 5%로 실효 주식 비중 약 11% — 예상 최대 낙폭 5~7%로 '5% 이내 손실 허용' 범위에 맞춥니다.",
+    "장기 기대수익은 과거 20년 데이터 기준 연 3%대 중반 — 원금 안정성을 지키면서 예금 단독 운용 대비 초과수익을 추구합니다.",
+  ],
+  MODERATE: [
+    "주식 25% + 혼합 25%로 실효 주식 비중 약 35% — 성장자산과 안전자산을 절반 가까이 나눈 균형 배분입니다.",
+    "원리금보장은 20%로 제한해 실질수익이 0%대인 자산에 과도하게 묶이지 않게 하고, 채권 30%가 변동성 완충을 담당합니다.",
+    "예상 최대 낙폭 약 15% — '10~20% 손실 허용' 성향의 허용 범위 안에서 수익 기회를 넓힙니다.",
+  ],
+  AGGRESSIVE: [
+    "주식 35% + 혼합 30%로 실효 주식 비중 약 47% — 성장자산이 절반가량을 차지해 장기 복리 수익을 우선합니다.",
+    "채권 20%·원리금보장 15%는 급락장에서 저가 매수(리밸런싱) 재원으로 활용됩니다.",
+    "예상 최대 낙폭 약 20~25%로 '상당한 위험 감수' 성향에 부합하며, 장기 기대수익은 과거 20년 데이터 기준 연 7~8% 수준입니다.",
+  ],
+  VERY_AGGRESSIVE: [
+    "주식형 60%: 퇴직연금 DC·IRP의 위험자산 한도(70%) 안에서 성장자산을 최대화한 수준입니다.",
+    "혼합형 25%(TDF 등)를 더해 실효 주식 비중은 약 70%에 이르지만, 규제상 위험자산 분류 기준은 준수합니다.",
+    "예상 최대 낙폭 30% 이상을 전제로 하는 배분이므로 10년 이상 장기 투자를 권장합니다.",
+  ],
 };
 
 export interface MarketSignal {
@@ -160,6 +195,13 @@ export function applySignals(riskType: RiskType, signals: MarketSignal[]): Alloc
     }
   }
 
+  // 퇴직연금 위험자산 70% 한도 가드: 신호 조정이 중첩되어도 주식형이 MAX_EQUITY_PCT를
+  // 넘지 않도록 초과분을 원리금보장으로 이전한다 (합계 100 유지).
+  if (alloc.equity > MAX_EQUITY_PCT) {
+    alloc.guaranteed += alloc.equity - MAX_EQUITY_PCT;
+    alloc.equity = MAX_EQUITY_PCT;
+  }
+
   return alloc;
 }
 
@@ -193,7 +235,7 @@ interface RawEtf {
 //
 // ⚠️ 표시 주의:
 //   - 수치는 "과거 실적"이며 미래 수익을 보장하지 않는다.
-//   - 항목별 returnYears(측정 기간)가 서로 다르다(설정이후 6~10년 혼재).
+//   - 항목별 returnYears(측정 기간)가 서로 다르다(지수 20년 / MANUAL 8~10년 혼재).
 //     → cumulativeReturn(누적)끼리 단순 비교 금지. 연환산(CAGR)으로만 상호 비교할 것.
 //   - returnPeriod 문자열은 프론트 노출용 기간 표기이며 returnYears와 일치해야 한다.
 //
@@ -209,15 +251,16 @@ export interface EtfReturnValue {
 /** 상수 E 식별자(key) → 수익률 값 맵. getEtfReturnMap()가 DB에서 이 형태로 반환한다. */
 export type EtfReturnMap = Record<string, EtfReturnValue>;
 
-// DB 조회 실패/누락 대비 fallback (시드 prisma/seed-etf.ts와 값 동일, 기준일 2026-06)
+// DB 조회 실패/누락 대비 fallback (시드 prisma/seed-etf.ts와 값 동일).
+// 지수 3종은 PR #42 롤링 20년 재계산 결과의 스냅샷(기준일 2026-07), MANUAL 4종은 2026-06 수동 추정.
 const FALLBACK_ETF_RETURNS: EtfReturnMap = {
-  국채3년:        { cumulativeReturn: 31,  returnYears: 10, returnPeriod: "10년" },
-  미국30년국채H:  { cumulativeReturn: 22,  returnYears: 8,  returnPeriod: "8년 (설정이후)" },
-  TDF2030:        { cumulativeReturn: 88,  returnYears: 9,  returnPeriod: "9년 (설정이후)" },
-  혼합국채:       { cumulativeReturn: 92,  returnYears: 10, returnPeriod: "10년" },
-  SP500:          { cumulativeReturn: 198, returnYears: 6,  returnPeriod: "6년 (설정이후)" },
-  KOSPI200:       { cumulativeReturn: 315, returnYears: 10, returnPeriod: "10년" },
-  NASDAQ100:      { cumulativeReturn: 612, returnYears: 10, returnPeriod: "10년" },
+  국채3년:        { cumulativeReturn: 31,     returnYears: 10,    returnPeriod: "10년" },
+  미국30년국채H:  { cumulativeReturn: 22,     returnYears: 8,     returnPeriod: "8년 (설정이후)" },
+  TDF2030:        { cumulativeReturn: 88,     returnYears: 9,     returnPeriod: "9년 (설정이후)" },
+  혼합국채:       { cumulativeReturn: 92,     returnYears: 10,    returnPeriod: "10년" },
+  SP500:          { cumulativeReturn: 837.3,  returnYears: 19.92, returnPeriod: "20년 (지수 산출)" },
+  KOSPI200:       { cumulativeReturn: 640.6,  returnYears: 19.92, returnPeriod: "20년 (지수 산출)" },
+  NASDAQ100:      { cumulativeReturn: 2932.1, returnYears: 19.92, returnPeriod: "20년 (지수 산출)" },
 };
 
 const ETF_DEFS: Partial<Record<keyof Allocation, {
