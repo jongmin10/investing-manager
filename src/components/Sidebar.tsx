@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
+import { useState } from "react";
 
 type NavItem = {
   href: string; icon: string; label: string;
@@ -33,6 +34,8 @@ const NAV_ITEMS: NavItem[] = [
 export default function Sidebar() {
   const pathname = usePathname();
   const { data: session, status } = useSession();
+  // 관리자 메뉴 기본 접힘 — 톱니 클릭 시 펼침(세션 한정, 새로고침 시 다시 접힘)
+  const [showAdmin, setShowAdmin] = useState(false);
 
   return (
     <aside className="fixed left-0 top-0 h-full w-56 bg-blue-50 flex flex-col z-20 border-r border-blue-100">
@@ -108,38 +111,56 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* 관리자 섹션 — isAdmin 인 경우에만 표시 */}
+      {/* 관리자 섹션 — isAdmin 에게만 노출. 기본 접힘: 톱니 클릭 시 펼침 */}
       {session?.user?.isAdmin && (
         <div className="px-3 pb-2">
-          <p className="text-[10px] font-semibold text-blue-400/70 uppercase tracking-widest px-3 mb-1">관리자</p>
-          <Link
-            href="/admin/api-status"
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150 ${
-              pathname === "/admin/api-status"
-                ? "bg-blue-500 text-white font-semibold shadow-sm"
-                : "text-blue-900 hover:bg-blue-100 hover:text-blue-700"
+          <button
+            type="button"
+            onClick={() => setShowAdmin((v) => !v)}
+            aria-expanded={showAdmin}
+            aria-controls="sidebar-admin-menu"
+            className={`flex items-center gap-3 w-full px-3 py-2 rounded-xl text-sm transition-all duration-150 ${
+              showAdmin
+                ? "text-blue-700 bg-blue-100/70"
+                : "text-blue-400/70 hover:text-blue-700 hover:bg-blue-100"
             }`}
           >
             <span className="text-base leading-none">⚙️</span>
-            <span className="flex-1 truncate">API 상태</span>
-            {pathname === "/admin/api-status" && (
-              <span className="w-1.5 h-1.5 rounded-full bg-white/70 flex-shrink-0" />
-            )}
-          </Link>
-          <Link
-            href="/admin/users"
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150 ${
-              pathname === "/admin/users"
-                ? "bg-blue-500 text-white font-semibold shadow-sm"
-                : "text-blue-900 hover:bg-blue-100 hover:text-blue-700"
-            }`}
-          >
-            <span className="text-base leading-none">👥</span>
-            <span className="flex-1 truncate">사용자 목록</span>
-            {pathname === "/admin/users" && (
-              <span className="w-1.5 h-1.5 rounded-full bg-white/70 flex-shrink-0" />
-            )}
-          </Link>
+            <span className="flex-1 truncate text-left">관리자</span>
+            <span className={`text-[10px] transition-transform duration-150 ${showAdmin ? "rotate-180" : ""}`}>▾</span>
+          </button>
+          {showAdmin && (
+            <div id="sidebar-admin-menu" className="mt-0.5 space-y-0.5">
+              <Link
+                href="/admin/api-status"
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150 ${
+                  pathname === "/admin/api-status"
+                    ? "bg-blue-500 text-white font-semibold shadow-sm"
+                    : "text-blue-900 hover:bg-blue-100 hover:text-blue-700"
+                }`}
+              >
+                <span className="text-base leading-none">🖥️</span>
+                <span className="flex-1 truncate">API 상태</span>
+                {pathname === "/admin/api-status" && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-white/70 flex-shrink-0" />
+                )}
+              </Link>
+              <Link
+                href="/admin/users"
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150 ${
+                  pathname === "/admin/users"
+                    ? "bg-blue-500 text-white font-semibold shadow-sm"
+                    : "text-blue-900 hover:bg-blue-100 hover:text-blue-700"
+                }`}
+              >
+                <span className="text-base leading-none">👥</span>
+                <span className="flex-1 truncate">사용자 목록</span>
+                {pathname === "/admin/users" && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-white/70 flex-shrink-0" />
+                )}
+              </Link>
+            </div>
+          )}
           {/* 초대 관리: 현재 개방 가입이라 미사용 → 메뉴 숨김. 페이지·API(/admin/invitations)는 유지. */}
         </div>
       )}
