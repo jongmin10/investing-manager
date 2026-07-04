@@ -17,7 +17,9 @@ import { dirname, join } from "node:path";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const svg = readFileSync(join(root, "src/app/icon.svg"));
 
-const sizes = [16, 32, 48];
+// favicon.ico는 탭·바로가기 fallback용으로 작게 유지(BMP 저장이라 큰 사이즈는 비대).
+// 데스크톱 바로가기의 고해상도 아이콘은 apple-icon(180)·manifest PNG(192/512)에서 나온다.
+const sizes = [16, 32, 48, 64];
 const pngs = await Promise.all(
   sizes.map((s) =>
     sharp(svg, { density: 384 }).resize(s, s, { fit: "contain" }).png().toBuffer()
