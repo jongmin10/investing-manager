@@ -1,6 +1,6 @@
 import { compassAppIcon } from "../../_brand/compass";
 
-// Android/PWA manifest 아이콘 (512×512 PNG, any·maskable 겸용). manifest.ts 에서 참조.
+// PWA manifest 아이콘 512×512 PNG (purpose: any — 데스크톱 설치/바로가기용, 마스킹 없이 노출).
 export function GET() {
-  return compassAppIcon(512);
+  return compassAppIcon(512, 0.78);
 }

@@ -29,10 +29,15 @@ export const BRAND_BLUE = "#3b82f6";
 
 /**
  * 파란 정사각형 배경 + 흰 나침반 앱 아이콘(PNG).
- * iOS·Android 홈 화면은 OS가 모서리를 둥글게 마스킹하므로 배경은 꽉 채우고(자체
- * 라운딩 없음), 나침반은 중앙 62%로 배치해 maskable 안전 영역(중앙 80%) 안에 둔다.
+ * 배경은 꽉 채우고(자체 라운딩 없음 — OS가 모서리 마스킹), 나침반 크기는 scale로 조절한다.
+ *
+ * @param scale 캔버스 대비 나침반 지름 비율.
+ *   - 데스크톱(any, 마스킹 없이 정사각형 노출): 0.78 — 꽉 차 보이게
+ *   - 모바일(maskable, OS가 원/스퀴클로 크롭): 0.62 — 안전 영역(중앙 80%) 유지
+ *   - iOS apple-touch(모서리 라운딩): 0.72
  */
-export function compassAppIcon(size: number): ImageResponse {
+export function compassAppIcon(size: number, scale = 0.72): ImageResponse {
+  const inner = Math.round(size * scale);
   return new ImageResponse(
     (
       <div
@@ -46,7 +51,7 @@ export function compassAppIcon(size: number): ImageResponse {
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img width={Math.round(size * 0.62)} height={Math.round(size * 0.62)} src={COMPASS_DATA_URI} alt="" />
+        <img width={inner} height={inner} src={COMPASS_DATA_URI} alt="" />
       </div>
     ),
     { width: size, height: size }

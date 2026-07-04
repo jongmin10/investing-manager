@@ -14,9 +14,11 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#3b82f6",
     icons: [
       { src: "/icon.svg", sizes: "any", type: "image/svg+xml" },
+      // any: 데스크톱 설치/바로가기 — 마스킹 없이 정사각형 그대로 노출(나침반 꽉 참)
       { src: "/icons/app-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
       { src: "/icons/app-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-      { src: "/icons/app-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+      // maskable: 모바일 홈 화면 adaptive 마스킹 — 안전 영역 유지
+      { src: "/icons/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
   };
 }
