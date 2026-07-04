@@ -11,6 +11,7 @@
     "db:seed:etf": "tsx prisma/seed-etf.ts",
     "index:backfill": "tsx scripts/backfill-index-history.ts",
     "etf:recalc": "node scripts/recalc-etf-returns.mjs",
+    "gen:favicon": "node scripts/gen-favicon.mjs",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
@@ -47,6 +48,8 @@
     "eslint-config-next": "16.2.9",
     "fast-check": "^4.8.0",
     "playwright": "^1.61.0",
+    "png-to-ico": "^3.0.1",
+    "sharp": "^0.35.3",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.9"
