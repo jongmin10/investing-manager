@@ -1,9 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { ALLOCATION_RATIONALE, Allocation, EtfGroup, GUARANTEED_CAGR, MarketSignal, RiskType } from "@/lib/portfolio";
+import {
+  ALLOCATION_RATIONALE,
+  Allocation,
+  ClassCagrs,
+  EtfGroup,
+  GUARANTEED_CAGR,
+  MarketSignal,
+  RiskType,
+} from "@/lib/portfolio";
+import {
+  CLASS_MDD,
+  MIXED_EQUITY_RATIO,
+  TargetSolveResult,
+  solveTargetAllocation,
+} from "@/lib/target-allocation";
 
 // ── M4: Recharts 컴포넌트 lazy-load (번들 최적화) ─────────────────────────
 const AllocationPieChart = dynamic(
@@ -41,6 +55,19 @@ interface PortfolioData {
   indicators: { vix: number | null; cpi: number | null; usCpi: number | null; cli: number | null; sp500Change: number | null };
   etfGroups: EtfGroup[];
   updatedAt: string;
+  // v2 필드 (설계 §6.1)
+  allocationSource: "RISK_TYPE" | "TARGET";
+  targetReturn: number | null;
+  expectedAnnualReturn: number;
+  riskGap: number;
+  mode: "guaranteed" | "interpolated" | "capped" | "fallback";
+  achievable: boolean;
+  targetSolver: {
+    classCagr: ClassCagrs;
+    anchorR: number[];
+    feasibleRange: { min: number; max: number };
+    basis: "db" | "fallback";
+  };
 }
 
 const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444"];
@@ -68,8 +95,7 @@ function calcReturn(cagr: number, years: number) {
   return parseFloat(((Math.pow(1 + cagr / 100, years) - 1) * 100).toFixed(1));
 }
 
-// m3: 부호 포함 퍼센트 표기 (recalc로 음수 CAGR 유입 시 "+−5%" 방지)
-// 천단위 구분자로 큰 숫자 가독성 확보 + 자릿수 경계에서 줄바꿈 지점 제공(모바일 중첩 방지).
+// m3: 부호 포함 퍼센트 표기
 function signedPct(n: number): string {
   return `${n >= 0 ? "+" : ""}${n.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}%`;
 }
@@ -94,7 +120,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "rebalancing", label: "리밸런싱"   },
 ];
 
-// 보유 비중 입력칸: 편집 중에는 원시 문자열 유지(자유 편집·비우기 허용), 클램핑은 blur에서만
+// 보유 비중 입력칸: 편집 중에는 원시 문자열 유지, 클램핑은 blur에서만
 function AllocInput({ value, onChange, id, ariaLabel }: { value: number; onChange: (v: number) => void; id?: string; ariaLabel?: string }) {
   const [text, setText] = useState(String(value));
   useEffect(() => { setText(String(value)); }, [value]);
@@ -106,7 +132,7 @@ function AllocInput({ value, onChange, id, ariaLabel }: { value: number; onChang
       onChange={(e) => {
         const raw = e.target.value;
         setText(raw);
-        if (raw === "") return; // 비우는 중 — 값 유지
+        if (raw === "") return;
         const n = Number(raw);
         if (!Number.isNaN(n) && n >= 0 && n <= 100) onChange(n);
       }}
@@ -121,6 +147,76 @@ function AllocInput({ value, onChange, id, ariaLabel }: { value: number; onChang
   );
 }
 
+// 목표 수익률 입력칸: 소수 1자리·0.5 스텝 지원. onOverMax로 부모에 max 초과 여부를 알린다.
+function TargetRateInput({
+  value,
+  onChange,
+  onOverMax,
+  min,
+  max,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  onOverMax?: (isOver: boolean) => void;
+  min: number;
+  max: number;
+}) {
+  const [text, setText] = useState(value.toFixed(1));
+
+  useEffect(() => {
+    // 파싱된 수치가 value와 크게 다를 때만 동기화 (슬라이더 이동 시)
+    const n = parseFloat(text);
+    if (!Number.isFinite(n) || Math.abs(n - value) > 0.05) {
+      setText(value.toFixed(1));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  return (
+    <div className="flex items-center gap-1 flex-shrink-0">
+      <input
+        type="number"
+        min={min}
+        max={max}
+        step={0.5}
+        value={text}
+        aria-label="목표 수익률 직접 입력"
+        onChange={(e) => {
+          const raw = e.target.value;
+          setText(raw);
+          if (raw === "") return;
+          const n = parseFloat(raw);
+          if (Number.isFinite(n) && n > 0 && n <= max) {
+            onChange(Math.max(min, n));
+            onOverMax?.(false);
+          } else if (Number.isFinite(n) && n > max) {
+            onOverMax?.(true);
+          }
+        }}
+        onBlur={() => {
+          const n = parseFloat(text);
+          if (text === "" || !Number.isFinite(n) || n <= 0) {
+            onChange(min);
+            setText(min.toFixed(1));
+            onOverMax?.(false);
+          } else if (n > max) {
+            onChange(max);
+            setText(max.toFixed(1));
+            onOverMax?.(true);
+          } else {
+            const clamped = Math.max(min, n);
+            onChange(clamped);
+            setText(clamped.toFixed(1));
+            onOverMax?.(false);
+          }
+        }}
+        className="w-16 text-center border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+      />
+      <span className="text-sm text-gray-500">%</span>
+    </div>
+  );
+}
+
 export default function PortfolioPage() {
   const [data,    setData]    = useState<PortfolioData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -132,13 +228,24 @@ export default function PortfolioPage() {
   const [selectedYears,       setSelectedYears]       = useState(10);
   const [totalInvestmentInput, setTotalInvestmentInput] = useState("");
 
-  // 리밸런싱 — currentAlloc은 데이터 로드 시 목표 배분으로 초기화된다 (아래 useEffect)
+  // 리밸런싱
   const [rebalTotalInput, setRebalTotalInput] = useState("");
   const [currentAlloc,    setCurrentAlloc]    = useState<Allocation>({ guaranteed: 0, bond: 0, mixed: 0, equity: 0 });
 
   // 탭 키보드 탐색
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
+  // ── 목표 수익률 설정 패널 상태 ─────────────────────────────
+  const [panelOpen,        setPanelOpen]        = useState(false);
+  const [panelRate,        setPanelRate]        = useState(5.0);
+  const [inputOverMax,     setInputOverMax]     = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [panelError,       setPanelError]       = useState<string | null>(null);
+  const [isPutting,        setIsPutting]        = useState(false);
+  const [isDeleting,       setIsDeleting]       = useState(false);
+  const confirmApplyRef = useRef<HTMLButtonElement | null>(null);
+
+  // ── Effects ────────────────────────────────────────────────
   useEffect(() => {
     fetch("/api/portfolio")
       .then((r) => {
@@ -156,6 +263,26 @@ export default function PortfolioPage() {
       });
   }, []);
 
+  // 확인 모달 — Esc 닫기 + 초기 포커스
+  useEffect(() => {
+    if (!showConfirmModal) return;
+    confirmApplyRef.current?.focus();
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowConfirmModal(false);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [showConfirmModal]);
+
+  // ── 실시간 미리보기 (클라이언트 계산, 설계 N5) ─────────────
+  const preview: TargetSolveResult | null = useMemo(() => {
+    if (!panelOpen || !data?.targetSolver) return null;
+    try {
+      return solveTargetAllocation(panelRate, data.targetSolver.classCagr, data.riskType);
+    } catch { return null; }
+  }, [panelOpen, panelRate, data]);
+
+  // ── Early returns ──────────────────────────────────────────
   if (loading) return (
     <div
       className="flex items-center justify-center min-h-[60vh]"
@@ -164,7 +291,6 @@ export default function PortfolioPage() {
       aria-label="포트폴리오 로딩 중"
     >
       <div className="flex flex-col items-center gap-5 text-center px-6">
-        {/* 스피너 */}
         <div
           className="w-14 h-14 rounded-full border-4 border-blue-100 border-t-blue-500 animate-spin"
           aria-hidden="true"
@@ -207,12 +333,87 @@ export default function PortfolioPage() {
 
   if (!data) return null;
 
-  // ── 공통 계산 ──────────────────────────────────────────
+  // ── 패널 조작 함수 (data 비-null 보장 이후 정의) ─────────────
+
+  function openPanel() {
+    const ts = data!.targetSolver;
+    const initial =
+      data!.allocationSource === "TARGET" && data!.targetReturn != null
+        ? data!.targetReturn
+        : parseFloat(((ts.feasibleRange.min + ts.feasibleRange.max) / 2).toFixed(1));
+    setPanelRate(initial);
+    setInputOverMax(false);
+    setPanelError(null);
+    setPanelOpen(true);
+  }
+
+  async function doPut(rate: number) {
+    setIsPutting(true);
+    setPanelError(null);
+    try {
+      const res = await fetch("/api/portfolio/target", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rate }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const d = await res.json();
+      setData(d);
+      setCurrentAlloc({ ...d.allocation });
+      setPanelOpen(false);
+      setShowConfirmModal(false);
+    } catch {
+      setPanelError("저장하지 못했습니다. 다시 시도하세요.");
+    } finally {
+      setIsPutting(false);
+    }
+  }
+
+  async function handleApply() {
+    if (!data?.targetSolver) return;
+    let pr: TargetSolveResult;
+    try {
+      pr = solveTargetAllocation(panelRate, data.targetSolver.classCagr, data.riskType);
+    } catch {
+      setPanelError("유효하지 않은 목표 수익률입니다.");
+      return;
+    }
+    if (pr.riskGap >= 2) {
+      setShowConfirmModal(true);
+      return;
+    }
+    await doPut(panelRate);
+  }
+
+  async function handleDelete() {
+    setIsDeleting(true);
+    try {
+      const res = await fetch("/api/portfolio/target", { method: "DELETE" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const d = await res.json();
+      setData(d);
+      setCurrentAlloc({ ...d.allocation });
+      setPanelOpen(false);
+    } catch {
+      // 해제 실패는 드문 경우 — 별도 에러 표시 없이 무시
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  // ── 공통 계산 ──────────────────────────────────────────────
   const chartData     = allocationToChart(data.allocation);
   const hasSignalAdjust = data.signals.some((s) => s.allocationAdjust);
   const etfGroups     = data.etfGroups ?? [];
-  // M2: cpi null 대응 — null이면 실질수익률 계산 생략
   const krCpi         = data.indicators.cpi;
+
+  // TARGET 모드 근거 카드용 — 현재 배분 기준 실효 주식 비중·낙폭
+  const effectiveEquityPct = Math.round(
+    data.allocation.equity + data.allocation.mixed * MIXED_EQUITY_RATIO
+  );
+  const estimatedMddPct = parseFloat(
+    ASSET_KEYS.reduce((s, k) => s + (data.allocation[k] * CLASS_MDD[k]) / 100, 0).toFixed(1)
+  );
 
   const etfReturnRows = etfGroups.flatMap((group) =>
     group.isGuaranteed
@@ -223,15 +424,14 @@ export default function PortfolioPage() {
   const portfolioReturn = parseFloat(etfReturnRows.reduce((s, r) => s + (r.portfolioPct / 100) * r.estimatedReturn, 0).toFixed(1));
   const portfolioCagr   = parseFloat(etfReturnRows.reduce((s, r) => s + (r.portfolioPct / 100) * r.cagr, 0).toFixed(1));
 
-  // M2: 피셔 정확식, cpi null 안전 처리
-  const realCagr        = calcRealCagr(portfolioCagr, krCpi);
-  const realReturn      = realCagr !== null
+  const realCagr   = calcRealCagr(portfolioCagr, krCpi);
+  const realReturn = realCagr !== null
     ? parseFloat(((Math.pow(1 + realCagr / 100, selectedYears) - 1) * 100).toFixed(1))
     : null;
 
   const totalInvestment = parseManwon(totalInvestmentInput);
 
-  // ── 리밸런싱 계산 ───────────────────────────────────────
+  // ── 리밸런싱 계산 ────────────────────────────────────────────
   const rebalTotal  = parseManwon(rebalTotalInput);
   const currentSum  = ASSET_KEYS.reduce((s, k) => s + currentAlloc[k], 0);
   const isValidSum  = Math.abs(currentSum - 100) < 0.1;
@@ -243,6 +443,9 @@ export default function PortfolioPage() {
     return { ...a, cur, tgt, curAmt, tgtAmt, diff: curAmt !== null && tgtAmt !== null ? tgtAmt - curAmt : null };
   });
   const rebalChartData = rebalRows.map((r) => ({ name: r.label, 현재: r.cur, 목표: r.tgt, color: r.color }));
+
+  const isTargetMode = data.allocationSource === "TARGET";
+  const ts = data.targetSolver;
 
   return (
     <div className="space-y-5 max-w-3xl mx-auto">
@@ -258,11 +461,193 @@ export default function PortfolioPage() {
         </Link>
       </div>
 
-      {/* ── 투자자 성향 (항상 표시) ── */}
+      {/* ── 투자자 성향 카드 (§7.1 목업) ── */}
       <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5">
         <p className="text-xs font-semibold text-blue-500 uppercase tracking-wide mb-1">나의 투자 성향</p>
-        <p className="text-2xl font-bold text-blue-700">{data.riskTypeLabel}</p>
-        <p className="text-sm text-blue-600 mt-1 leading-relaxed">{data.riskTypeDesc}</p>
+
+        {/* 헤더 행: 성향명 + 수익률 */}
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-2xl font-bold text-blue-700 leading-tight">{data.riskTypeLabel}</p>
+          <div className="text-right flex-shrink-0">
+            {isTargetMode && data.targetReturn != null ? (
+              <>
+                <p className="text-sm font-semibold text-blue-700">
+                  목표 연 {data.targetReturn.toFixed(1)}% · 기대 연 {data.expectedAnnualReturn.toFixed(1)}%
+                </p>
+                <p className="text-[11px] text-blue-500">(과거 20년 기준)</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-semibold text-blue-700">
+                  연 예상 수익률 {data.expectedAnnualReturn.toFixed(1)}%
+                </p>
+                <p className="text-[11px] text-blue-500">(과거 20년 기준)</p>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* 모드별 카드 본문 */}
+        {isTargetMode ? (
+          /* TARGET 모드 */
+          <>
+            <p className="text-sm text-blue-600 mt-1.5">🎯 목표 수익률 적용 중</p>
+
+            {data.riskGap >= 1 && (
+              <div
+                role="alert"
+                className={`mt-2 flex items-center gap-2 px-3 py-2 rounded-xl border text-sm ${SEVERITY_STYLE.warning}`}
+              >
+                ⚠ 성향보다 {data.riskGap}단계 높은 위험
+              </div>
+            )}
+
+            <div className="mt-3 flex gap-2 flex-wrap">
+              <button
+                aria-expanded={panelOpen}
+                aria-controls="target-setting-panel"
+                onClick={openPanel}
+                className="text-sm font-medium text-blue-600 border border-blue-300 rounded-full px-4 py-1.5 hover:bg-blue-100 transition-colors"
+              >
+                수정
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="text-sm font-medium text-gray-500 border border-gray-300 rounded-full px-4 py-1.5 hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                {isDeleting ? "해제 중…" : "해제"}
+              </button>
+            </div>
+          </>
+        ) : (
+          /* RISK_TYPE 모드 */
+          <>
+            <p className="text-sm text-blue-600 mt-1 leading-relaxed">{data.riskTypeDesc}</p>
+            <div className="mt-3 pt-3 border-t border-blue-200 flex items-center justify-between gap-2">
+              <span className="text-sm text-blue-600">🎯 목표 수익률로 배분 받기</span>
+              <button
+                aria-expanded={panelOpen}
+                aria-controls="target-setting-panel"
+                onClick={() => (panelOpen ? setPanelOpen(false) : openPanel())}
+                className="flex-shrink-0 text-sm font-medium text-blue-600 border border-blue-300 rounded-full px-3 py-1.5 hover:bg-blue-100 transition-colors"
+              >
+                목표 설정 {panelOpen ? "▴" : "▾"}
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* 설정 패널 (아코디언, §7.2) */}
+        {panelOpen && ts && (
+          <div id="target-setting-panel" className="mt-4 pt-4 border-t border-blue-200 space-y-4">
+            {ts.basis === "fallback" && (
+              <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
+                기준 데이터: 예비값 사용 중 (DB 데이터 수집 후 자동 갱신)
+              </p>
+            )}
+
+            {/* 슬라이더 + 숫자 입력 */}
+            <div>
+              <label className="text-sm font-semibold text-blue-700 block mb-2">연 목표 수익률</label>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 flex-shrink-0">{ts.feasibleRange.min}%</span>
+                <input
+                  type="range"
+                  min={ts.feasibleRange.min}
+                  max={ts.feasibleRange.max}
+                  step={0.5}
+                  value={panelRate}
+                  onChange={(e) => {
+                    setPanelRate(parseFloat(e.target.value));
+                    setInputOverMax(false);
+                  }}
+                  aria-label="연 목표 수익률"
+                  aria-valuemin={ts.feasibleRange.min}
+                  aria-valuemax={ts.feasibleRange.max}
+                  aria-valuenow={panelRate}
+                  aria-valuetext={`연 ${panelRate.toFixed(1)}%`}
+                  className="flex-1 accent-blue-500 cursor-pointer"
+                />
+                <span className="text-xs text-gray-500 flex-shrink-0">{ts.feasibleRange.max}%</span>
+                <TargetRateInput
+                  value={panelRate}
+                  onChange={(v) => { setPanelRate(v); }}
+                  onOverMax={(isOver) => setInputOverMax(isOver)}
+                  min={ts.feasibleRange.min}
+                  max={ts.feasibleRange.max}
+                />
+              </div>
+              {inputOverMax && (
+                <p className="text-xs text-red-500 mt-1 text-right">
+                  현재 데이터 기준 최대 기대수익은 연 {ts.feasibleRange.max}%입니다
+                </p>
+              )}
+            </div>
+
+            {/* 미리보기 (실시간, 클라 계산) */}
+            {preview && (
+              <div className="bg-white/70 border border-blue-100 rounded-xl p-4 space-y-2">
+                <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">미리보기</p>
+
+                {preview.mode === "guaranteed" && (
+                  <div role="status" className={`flex items-center gap-2 text-sm border rounded-lg px-3 py-2 ${SEVERITY_STYLE.info}`}>
+                    💡 원리금보장 상품만으로 달성 가능합니다
+                  </div>
+                )}
+
+                <p className="text-sm text-gray-700">
+                  보장 <strong>{preview.allocation.guaranteed}</strong> / 채권 <strong>{preview.allocation.bond}</strong> / 혼합 <strong>{preview.allocation.mixed}</strong> / 주식 <strong>{preview.allocation.equity}</strong>
+                </p>
+                <p className="text-sm text-gray-600">
+                  기대 연 {preview.expectedRate.toFixed(1)}% · 예상 낙폭 ~{preview.estimatedMddPct.toFixed(1)}% · 실효 주식 ~{preview.effectiveEquityPct}%
+                </p>
+
+                {preview.riskGap >= 1 && (
+                  <div role="alert" className={`flex items-start gap-2 text-sm border rounded-lg px-3 py-2 ${SEVERITY_STYLE.warning}`}>
+                    ⚠ 성향({data.riskTypeLabel})보다 {preview.riskGap}단계 높은 위험입니다
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 에러 */}
+            {panelError && (
+              <div role="alert" className={`flex items-center justify-between gap-2 text-sm border rounded-xl px-3 py-2 ${SEVERITY_STYLE.danger}`}>
+                <span>{panelError}</span>
+                <button
+                  onClick={handleApply}
+                  className="text-xs font-semibold underline flex-shrink-0"
+                >
+                  재시도
+                </button>
+              </div>
+            )}
+
+            {/* 버튼 행 */}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => { setPanelOpen(false); setPanelError(null); }}
+                className="text-sm font-medium text-gray-500 border border-gray-300 rounded-full px-4 py-1.5 hover:bg-gray-50 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleApply}
+                disabled={isPutting}
+                className="text-sm font-medium text-white bg-blue-500 rounded-full px-4 py-1.5 hover:bg-blue-600 transition-colors disabled:opacity-50"
+              >
+                {isPutting ? "저장 중…" : "적용하기"}
+              </button>
+            </div>
+
+            {/* 고지 (설계 §9) */}
+            <p className="text-[10px] text-gray-400 leading-relaxed border-t border-blue-100 pt-2">
+              기대수익·낙폭은 과거 20년 데이터 기반 추정치이며 미래 성과와 목표 달성을 보장하지 않습니다.
+              기준 데이터 갱신 시 배분이 변동될 수 있습니다.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* ── M5: 탭 네비게이션 — 모바일 360px 대응 ── */}
@@ -314,6 +699,12 @@ export default function PortfolioPage() {
                   <span className="leading-relaxed">{s.message}</span>
                 </div>
               ))}
+              {/* TARGET 모드: 신호는 정보 제공용, 배분 미반영 안내 (설계 N4) */}
+              {isTargetMode && (
+                <p role="status" className="text-[11px] text-gray-400 pl-1">
+                  시장 신호는 정보 제공용이며 목표 배분에는 반영되지 않습니다.
+                </p>
+              )}
             </div>
           )}
 
@@ -321,12 +712,15 @@ export default function PortfolioPage() {
           <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-gray-900">추천 자산 배분</h2>
-              {hasSignalAdjust && (
+              {/* 배지: TARGET 모드 vs 시장 신호 반영 (설계 §7.2) */}
+              {isTargetMode ? (
+                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">목표 수익률 반영됨</span>
+              ) : hasSignalAdjust ? (
                 <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">시장 신호 반영됨</span>
-              )}
+              ) : null}
             </div>
 
-            {/* M5: PieChart Legend 클리핑 방지 — h-auto + min-h, 모바일 세로 레이아웃 */}
+            {/* M5: PieChart Legend 클리핑 방지 */}
             <div className="flex flex-col md:flex-row items-center gap-6">
               <div className="w-full md:w-64 min-h-[16rem] h-64">
                 <AllocationPieChart
@@ -349,7 +743,7 @@ export default function PortfolioPage() {
                           <span className="text-sm text-gray-700">{label}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          {diff !== 0 && (
+                          {!isTargetMode && diff !== 0 && (
                             <span className={`text-xs font-medium ${diff > 0 ? "text-red-500" : "text-blue-500"}`}>
                               {diff > 0 ? `+${diff}%` : `${diff}%`}
                             </span>
@@ -370,18 +764,41 @@ export default function PortfolioPage() {
           {/* 배분 근거 */}
           <div className="mt-4 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
             <h2 className="font-semibold text-gray-900 mb-3">이 배분의 근거</h2>
-            <ul className="space-y-2">
-              {ALLOCATION_RATIONALE[data.riskType].map((line, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-gray-600 leading-relaxed">
+            {isTargetMode && data.targetReturn != null ? (
+              /* TARGET 모드: 동적 3줄 근거 (설계 §7.2) */
+              <ul className="space-y-2">
+                <li className="flex items-start gap-2 text-sm text-gray-600 leading-relaxed">
                   <span className="text-blue-400 mt-0.5 flex-shrink-0">•</span>
-                  <span>{line}</span>
+                  <span>
+                    목표 연 {data.targetReturn.toFixed(1)}% 달성을 위한 최소 위험 배분 (기대 연 {data.expectedAnnualReturn.toFixed(1)}%)
+                  </span>
                 </li>
-              ))}
-            </ul>
+                <li className="flex items-start gap-2 text-sm text-gray-600 leading-relaxed">
+                  <span className="text-blue-400 mt-0.5 flex-shrink-0">•</span>
+                  <span>실효 주식 비중 ~{effectiveEquityPct}% (주식 + 혼합×0.4)</span>
+                </li>
+                <li className="flex items-start gap-2 text-sm text-gray-600 leading-relaxed">
+                  <span className="text-blue-400 mt-0.5 flex-shrink-0">•</span>
+                  <span>예상 최대 낙폭 ~{estimatedMddPct}%</span>
+                </li>
+              </ul>
+            ) : (
+              /* RISK_TYPE 모드: 기존 성향별 고정 근거 */
+              <ul className="space-y-2">
+                {ALLOCATION_RATIONALE[data.riskType].map((line, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-gray-600 leading-relaxed">
+                    <span className="text-blue-400 mt-0.5 flex-shrink-0">•</span>
+                    <span>{line}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
             <p className="mt-4 text-[11px] text-gray-400 leading-relaxed border-t border-gray-100 pt-3">
               퇴직연금 DC·IRP 계좌는 위험자산(주식형 펀드 등) 투자 한도가 70%로 제한되며,
-              시장 신호가 반영되더라도 이 한도를 넘지 않도록 배분이 자동 조정됩니다.
-              예상 낙폭·기대수익은 과거 데이터 기반 추정치로 미래 성과를 보장하지 않습니다.
+              {isTargetMode
+                ? " 목표 배분도 이 한도를 넘지 않도록 자동 조정됩니다."
+                : " 시장 신호가 반영되더라도 이 한도를 넘지 않도록 배분이 자동 조정됩니다."}
+              {" "}예상 낙폭·기대수익은 과거 데이터 기반 추정치로 미래 성과를 보장하지 않습니다.
             </p>
           </div>
         </div>
@@ -452,13 +869,12 @@ export default function PortfolioPage() {
       {/* ══════════════ 탭 3: 수익률 분석 ══════════════ */}
       {tab === "returns" && (
         <div role="tabpanel" id="panel-returns" aria-labelledby="tab-returns" className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-          {/* 헤더 */}
           <div className="mb-4">
             <h2 className="font-semibold text-gray-900">수익률 분석</h2>
             <p className="text-xs text-gray-400 mt-0.5">CAGR 기반 투자 기간별 예상 누적 수익률</p>
           </div>
 
-          {/* M5: 연도 버튼 — 모바일 wrapping 대응, grid로 고정 */}
+          {/* M5: 연도 버튼 — grid로 고정 */}
           <div className="mb-4">
             <div className="grid grid-cols-6 gap-1 bg-gray-100 rounded-xl p-1">
               {YEAR_OPTIONS.map((y) => (
@@ -492,14 +908,12 @@ export default function PortfolioPage() {
             )}
           </div>
 
-          {/* ── M1: 포트폴리오 요약 카드 — CAGR/실질CAGR 항상 표시 ── */}
+          {/* 포트폴리오 요약 카드 */}
           <div className="mb-5 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 p-5 text-white">
             <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">
               포트폴리오 예상 수익률 — {selectedYears}년 기준
             </p>
 
-            {/* 행 1: 누적 수익률 + CAGR — 항상 표시 */}
-            {/* 큰 숫자가 옆 칸을 침범하지 않도록 min-w-0 + 반응형 폰트 + break-words(자릿수 경계 줄바꿈) */}
             <div className="grid grid-cols-2 gap-4 mb-3">
               <div className="min-w-0">
                 <p className="text-[11px] text-slate-400 mb-0.5">누적 수익률 (명목)</p>
@@ -513,7 +927,6 @@ export default function PortfolioPage() {
               </div>
             </div>
 
-            {/* 행 2: 실질 누적 수익률 + 실질 CAGR — 항상 표시, cpi null이면 "물가 데이터 없음" */}
             <div className="grid grid-cols-2 gap-4 mb-3">
               <div className="min-w-0">
                 <p className="text-[11px] text-slate-400 mb-0.5">실질 누적 수익률</p>
@@ -537,7 +950,6 @@ export default function PortfolioPage() {
               </div>
             </div>
 
-            {/* 행 3: totalInvestment 있을 때만 금액 카드 추가 표시 */}
             {totalInvestment && (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3 pt-3 border-t border-slate-700">
                 <div>
@@ -578,7 +990,6 @@ export default function PortfolioPage() {
           <div className="space-y-2">
             {etfReturnRows.map((row) => {
               const ret = row.estimatedReturn;
-              // M2: ETF별 실질 CAGR — 피셔 정확식, cpi null 안전 처리
               const realEtfCagr = calcRealCagr(row.cagr, krCpi);
               const realEtfRet  = realEtfCagr !== null
                 ? parseFloat(((Math.pow(1 + realEtfCagr / 100, selectedYears) - 1) * 100).toFixed(1))
@@ -688,7 +1099,6 @@ export default function PortfolioPage() {
 
             {/* 결과 */}
             <div className="space-y-4">
-              {/* M5: BarChart YAxis 라벨 잘림 방지 — width를 72에서 80으로, 모바일 h-auto */}
               <div className="h-44">
                 <RebalanceBarChart data={rebalChartData} />
                 <div className="flex gap-4 justify-center mt-1">
@@ -741,6 +1151,43 @@ export default function PortfolioPage() {
         <br />
         기준 시각: {new Date(data.updatedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
       </div>
+
+      {/* ── 확인 모달 (riskGap≥2, 설계 §7.2) ── */}
+      {showConfirmModal && preview && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+          aria-modal="true"
+          role="dialog"
+          aria-labelledby="confirm-modal-title"
+        >
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
+            <p id="confirm-modal-title" className="font-semibold text-gray-900 mb-2 leading-snug">
+              성향보다 {preview.riskGap}단계 높은 위험을 감수하시겠습니까?
+            </p>
+            <p className="text-sm text-gray-500 mb-5 leading-relaxed">
+              목표 수익률 달성을 위해 현재 성향({data.riskTypeLabel})보다 더 높은 위험을 감수해야 합니다.
+              먼저 재진단을 통해 성향을 업데이트하거나, 위험을 감수하고 적용할 수 있습니다.
+            </p>
+            <div className="flex gap-2 justify-end flex-wrap">
+              <Link
+                href="/survey"
+                onClick={() => setShowConfirmModal(false)}
+                className="text-sm font-medium text-blue-600 border border-blue-300 rounded-full px-4 py-1.5 hover:bg-blue-50 transition-colors"
+              >
+                재진단하기
+              </Link>
+              <button
+                ref={confirmApplyRef}
+                onClick={() => doPut(panelRate)}
+                disabled={isPutting}
+                className="text-sm font-medium text-white bg-blue-500 rounded-full px-4 py-1.5 hover:bg-blue-600 transition-colors disabled:opacity-50"
+              >
+                {isPutting ? "저장 중…" : "감수하고 적용"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
