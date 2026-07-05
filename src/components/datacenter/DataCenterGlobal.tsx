@@ -36,6 +36,24 @@ const REGION_COLORS: Record<string, string> = {
   "아시아·태평양": "#f59e0b",
 };
 
+const RADIAN = Math.PI / 180;
+function PieLabel(props: {
+  cx?: number; cy?: number; midAngle?: number;
+  innerRadius?: number; outerRadius?: number; percent?: number;
+}) {
+  const { cx = 0, cy = 0, midAngle = 0, innerRadius = 0, outerRadius = 0, percent = 0 } = props;
+  if (percent < 0.05) return null;
+  const r = innerRadius + (outerRadius - innerRadius) * 0.55;
+  const x = cx + r * Math.cos(-midAngle * RADIAN);
+  const y = cy + r * Math.sin(-midAngle * RADIAN);
+  return (
+    <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central"
+      fontSize={12} fontWeight="bold">
+      {`${(percent * 100).toFixed(1)}%`}
+    </text>
+  );
+}
+
 type RegionFilter = "전체" | "아메리카" | "유럽" | "아시아·태평양";
 
 export default function DataCenterGlobal({ countries }: Props) {
@@ -159,19 +177,17 @@ export default function DataCenterGlobal({ countries }: Props) {
       {/* 대륙별 파이 */}
       <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
         <h3 className="text-sm font-semibold text-gray-700 mb-4">대륙별 분포</h3>
-        <ResponsiveContainer width="100%" height={200}>
+        <ResponsiveContainer width="100%" height={260}>
           <PieChart>
             <Pie
               data={regionTotals}
               dataKey="value"
               nameKey="name"
               cx="50%"
-              cy="50%"
-              outerRadius={80}
-              label={({ name, percent }) =>
-                `${name} ${((percent ?? 0) * 100).toFixed(1)}%`
-              }
+              cy="45%"
+              outerRadius={90}
               labelLine={false}
+              label={PieLabel}
             >
               {regionTotals.map((entry) => (
                 <Cell
@@ -181,7 +197,7 @@ export default function DataCenterGlobal({ countries }: Props) {
               ))}
             </Pie>
             <Tooltip
-              formatter={(v) => [`${Number(v).toLocaleString()}개`]}
+              formatter={(v, name) => [`${Number(v).toLocaleString()}개`, String(name)]}
               contentStyle={{ fontSize: 12, borderRadius: 8 }}
             />
             <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }} />
