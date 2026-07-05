@@ -19,7 +19,8 @@ export type CollectionJob =
   | "daily"
   | "refresh-universe"
   | "history"
-  | "exports";
+  | "exports"
+  | "datacenter";
 
 export type RunStatus = "success" | "failed" | "partial";
 

@@ -417,6 +417,26 @@ model MonthlyExport {
   @@index([yearMonth])
 }
 
+// 데이터센터 지표 (일별 자동수집)
+// source : EDGAR(하이퍼스케일러 Capex) | EIA(전력수요) | DCMAP(DC 카운트)
+// metric : DC_COUNT | CAPEX_MSFT | CAPEX_AMZN | CAPEX_GOOG | CAPEX_META | POWER_VA
+// country: ISO 3166-1 alpha-2 (DC_COUNT → 12개국, 나머지 → "US" 고정)
+// period : "2025Q1"(분기) | "2025-06"(월별)
+model DataCenterRecord {
+  id          String   @id @default(cuid())
+  source      String
+  metric      String
+  country     String   @default("US")
+  period      String
+  value       Float
+  unit        String   // "개" | "USD_B" | "GWh"
+  provisional Boolean  @default(false)
+  collectedAt DateTime @default(now())
+
+  @@unique([metric, country, period])
+  @@index([metric, country, period])
+}
+
 // 투자 일기
 model JournalEntry {
   id           String   @id @default(cuid())
