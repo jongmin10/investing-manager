@@ -195,10 +195,11 @@ export default function DataCenterGlobal({ countries }: Props) {
           <thead>
             <tr className="border-b border-gray-100">
               <th className="text-left p-3 text-xs font-semibold text-gray-500">국가</th>
-              <th className="text-left p-3 text-xs font-semibold text-gray-500">대륙</th>
+              <th className="text-left p-3 text-xs font-semibold text-gray-500 hidden sm:table-cell">대륙</th>
               <th className="text-right p-3 text-xs font-semibold text-gray-500">DC 수</th>
-              <th className="text-right p-3 text-xs font-semibold text-gray-500">점유율</th>
-              <th className="text-right p-3 text-xs font-semibold text-gray-500">기준</th>
+              <th className="text-right p-3 text-xs font-semibold text-gray-500 hidden md:table-cell">점유율</th>
+              <th className="text-right p-3 text-xs font-semibold text-gray-500">WoW</th>
+              <th className="text-right p-3 text-xs font-semibold text-gray-500">MoM</th>
             </tr>
           </thead>
           <tbody>
@@ -206,22 +207,30 @@ export default function DataCenterGlobal({ countries }: Props) {
               <tr key={c.country} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                 <td className="p-3 font-medium">
                   {FLAG[c.country] ?? ""} {COUNTRY_NAME[c.country] ?? c.country}
-                </td>
-                <td className="p-3 text-gray-500 text-xs">{REGION[c.country] ?? "—"}</td>
-                <td className="p-3 text-right font-mono">
-                  {c.value.toLocaleString()}
                   {c.country === "CN" && (
                     <span className="text-[10px] text-gray-400 ml-1">※</span>
                   )}
                 </td>
-                <td className="p-3 text-right text-gray-600">
+                <td className="p-3 text-gray-500 text-xs hidden sm:table-cell">{REGION[c.country] ?? "—"}</td>
+                <td className="p-3 text-right font-mono">
+                  {c.value.toLocaleString()}
+                </td>
+                <td className="p-3 text-right text-gray-600 hidden md:table-cell">
                   {total > 0 ? `${((c.value / total) * 100).toFixed(1)}%` : "—"}
                 </td>
-                <td className="p-3 text-right text-xs text-gray-400">{c.period}</td>
+                <td className={`p-3 text-right text-xs font-mono ${c.wowPct == null ? "text-gray-300" : c.wowPct >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                  {c.wowPct != null ? `${c.wowPct >= 0 ? "+" : ""}${c.wowPct.toFixed(2)}%` : "—"}
+                </td>
+                <td className={`p-3 text-right text-xs font-mono ${c.momPct == null ? "text-gray-300" : c.momPct >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                  {c.momPct != null ? `${c.momPct >= 0 ? "+" : ""}${c.momPct.toFixed(2)}%` : "—"}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
+        <p className="text-[10px] text-gray-400 p-3 border-t border-gray-100">
+          WoW = 전주 대비 · MoM = 4주 전 대비 · 2주 이상 수집 후 산출
+        </p>
       </div>
     </div>
   );

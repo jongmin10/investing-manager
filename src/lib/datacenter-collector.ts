@@ -297,12 +297,20 @@ function parseBaxtelCount(html: string): number | null {
   return null;
 }
 
+// ISO 8601 주차 "YYYY-Www" — 주별 스냅샷으로 WoW·MoM 증가율 계산 가능
+function toIsoWeek(date: Date): string {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7)); // 같은 ISO주의 목요일
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+}
+
 export async function collectDCMapCounts(): Promise<{
   ok: number;
   failed: string[];
 }> {
-  const now = new Date();
-  const period = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  const period = toIsoWeek(new Date()); // "2026-W27" 형식 — 같은 주 중복 실행 시 upsert
   let ok = 0;
   const failed: string[] = [];
 
