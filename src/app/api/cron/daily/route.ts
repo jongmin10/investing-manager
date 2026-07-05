@@ -96,7 +96,17 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // 4. 시황 리포트 자동 생성 (LLM 1회, 격리)
+  // 4. 데이터센터 지표 수집 (EDGAR Capex + EIA 전력 + DCMAP 카운트)
+  try {
+    await triggerNextSlice(baseUrl, "/api/cron/collect-datacenter", {});
+    results.datacenter = { triggered: true };
+    console.log("[cron] 데이터센터 지표 수집 트리거");
+  } catch (err) {
+    results.datacenterError = String(err);
+    console.error("[cron] 데이터센터 수집 트리거 오류:", err);
+  }
+
+  // 5. 시황 리포트 자동 생성 (LLM 1회, 격리)
   try {
     const { generateReport } = await import("@/lib/report-generator");
     const report = await generateReport(new Date(), { force: false });
@@ -113,7 +123,7 @@ export async function GET(req: NextRequest) {
   // 계측(§5): 오케스트레이터가 "직접" 수행한 작업(경제지표 수집)을 1행으로 기록한다.
   // 다운스트림 슬라이스 잡(collect-stocks/collect-financials)은 각자 별도 1행을 남기므로
   // 여기서 중복 집계하지 않는다. 트리거/리포트 단계의 에러는 error 필드에 합쳐 관측성만 남긴다.
-  const errParts = ["indicatorsError", "dailyIndexError", "exportsError", "reportError", "stocksError", "financialsError"]
+  const errParts = ["indicatorsError", "dailyIndexError", "exportsError", "datacenterError", "reportError", "stocksError", "financialsError"]
     .map((k) => results[k])
     .filter((v): v is string => typeof v === "string");
   await recordCollectionRun("daily", startedAt, {
