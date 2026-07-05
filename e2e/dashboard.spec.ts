@@ -23,8 +23,8 @@ test.describe("대시보드", () => {
     await expect(page).toHaveTitle(/연금 나침반/);
   });
 
-  test("페이지 H1이 '경제지표 대시보드'이다", async ({ page }) => {
-    await expect(page.getByRole("heading", { name: "경제지표 대시보드", level: 1 })).toBeVisible();
+  test("페이지 H1이 '대시보드'이다", async ({ page }) => {
+    await expect(page.getByRole("heading", { name: "대시보드", level: 1 })).toBeVisible();
   });
 
   test("지표 섹션 레이블(금리·주식시장·물가·경기·외환)이 렌더된다", async ({ page }) => {

@@ -156,7 +156,7 @@ export async function getDCSummary(): Promise<DCSummary> {
   // 전력: 최신 + 12개월 전
   const powerLatest = powerRows[0]?.value ?? null;
   const latestPowerPeriod = powerRows[0]?.period ?? null;
-  const powerYoy = powerRows.find((_r, i) => i >= 11)?.value ?? null;
+  const powerYoy = powerRows[12]?.value ?? null; // 정확히 12개월 전 (index=12)
 
   return {
     usDcCount: dcCountRow?.value ?? null,
