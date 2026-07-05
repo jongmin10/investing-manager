@@ -31,6 +31,7 @@ const MORE_ITEMS = [
 const ADMIN_ITEMS = [
   { href: "/admin/api-status", icon: "🖥️", label: "API 상태" },
   { href: "/admin/users", icon: "👥", label: "사용자 목록" },
+  { href: "/admin/collections", icon: "📋", label: "수집 현황" },
 ];
 
 export default function MobileNav() {
