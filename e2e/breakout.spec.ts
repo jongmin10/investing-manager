@@ -122,7 +122,7 @@ test.describe("신고가 돌파 필터", () => {
     await toggle.click();
     await page.getByRole("button", { name: /고급 설정/ }).click();
     const toleranceSlider = page.locator("#breakout-tolerance");
-    await expect(toleranceSlider).toHaveAttribute("aria-valuetext", "0.5% 허용 오차");
+    await expect(toleranceSlider).toHaveAttribute("aria-valuetext", "3.0% 허용 오차");
   });
 
   // ── 10. breakout OFF 시 정렬이 breakoutDate라면 자동으로 해제 ──
