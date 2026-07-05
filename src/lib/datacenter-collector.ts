@@ -265,11 +265,13 @@ export async function collectEIAPower(): Promise<{
   }
 }
 
-// ─── datacentermap.com 스크래핑 (12개국 DC 카운트) ───────────────────────────
+// ─── baxtel.com 스크래핑 (12개국 DC 카운트) ─────────────────────────────────
+// datacentermap.com 은 Cloudflare로 차단(429). baxtel.com 은 SSR HTML 직접 접근 가능.
+// 파싱 패턴: "Explore 4969 data centers in United States."
 
-const DCMAP_COUNTRIES = [
-  { code: "US", slug: "usa" },
-  { code: "DE", slug: "germany" },
+const BAXTEL_COUNTRIES = [
+  { code: "US", slug: "united-states" },
+  { code: "DE", slug: "germany-deutschland" },
   { code: "GB", slug: "united-kingdom" },
   { code: "NL", slug: "netherlands" },
   { code: "FR", slug: "france" },
@@ -279,25 +281,18 @@ const DCMAP_COUNTRIES = [
   { code: "CN", slug: "china" },
   { code: "KR", slug: "south-korea" },
   { code: "CA", slug: "canada" },
-  { code: "IN", slug: "india" },
+  { code: "IN", slug: "india-bharata" },
 ] as const;
 
-function parseDCMapCount(html: string): number | null {
-  // 여러 패턴 순서대로 시도
-  const patterns = [
-    /(\d[\d,]+)\s*data\s*cent(?:er|re)/i,
-    /data\s*cent(?:er|re)s?\s*[:\-–]?\s*(\d[\d,]+)/i,
-    /"totalCount"\s*:\s*(\d+)/,
-    /class="[^"]*total[^"]*"[^>]*>(\d[\d,]+)/i,
-    /We\s+have\s+(\d[\d,]+)/i,
-    /(\d[\d,]+)\s+facilit/i,
-  ];
-  for (const p of patterns) {
-    const m = html.match(p);
-    if (m) {
-      const n = parseInt(m[1].replace(/,/g, ""), 10);
-      if (n > 0) return n;
-    }
+const BAXTEL_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+
+function parseBaxtelCount(html: string): number | null {
+  // <meta> description: "Explore 4,969 data centers in United States."
+  const m = html.match(/Explore\s+([\d,]+)\s+data\s+cent/i);
+  if (m) {
+    const n = parseInt(m[1].replace(/,/g, ""), 10);
+    if (n > 0) return n;
   }
   return null;
 }
@@ -311,26 +306,20 @@ export async function collectDCMapCounts(): Promise<{
   let ok = 0;
   const failed: string[] = [];
 
-  for (const country of DCMAP_COUNTRIES) {
+  for (const country of BAXTEL_COUNTRIES) {
     try {
-      const url = `https://www.datacentermap.com/${country.slug}/`;
+      const url = `https://baxtel.com/data-center/${country.slug}`;
       const res = await fetch(url, {
         headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-          Accept:
-            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+          "User-Agent": BAXTEL_UA,
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
           "Accept-Language": "en-US,en;q=0.9",
-          "Accept-Encoding": "gzip, deflate, br",
-          "Cache-Control": "no-cache",
-          "Upgrade-Insecure-Requests": "1",
-          Referer: "https://www.google.com/",
         },
-        signal: AbortSignal.timeout(12_000),
+        signal: AbortSignal.timeout(15_000),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const html = await res.text();
-      const count = parseDCMapCount(html);
+      const count = parseBaxtelCount(html);
       if (count === null) throw new Error("카운트 파싱 실패");
 
       await prisma.dataCenterRecord.upsert({
@@ -342,7 +331,7 @@ export async function collectDCMapCounts(): Promise<{
           },
         },
         create: {
-          source: "DCMAP",
+          source: "BAXTEL",
           metric: "DC_COUNT",
           country: country.code,
           period,
@@ -355,7 +344,8 @@ export async function collectDCMapCounts(): Promise<{
     } catch (e) {
       failed.push(`${country.code}: ${(e as Error).message}`);
     }
-    await new Promise((r) => setTimeout(r, 500));
+    // baxtel 비공식 접근 — 요청 간격 1초
+    await new Promise((r) => setTimeout(r, 1_000));
   }
   return { ok, failed };
 }

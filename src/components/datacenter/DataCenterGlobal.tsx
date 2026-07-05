@@ -151,7 +151,7 @@ export default function DataCenterGlobal({ countries }: Props) {
         </ResponsiveContainer>
         {filtered.some((c) => c.country === "CN") && (
           <p className="text-[10px] text-gray-400 mt-2">
-            ※ 중국(CN)은 datacentermap.com 기준이며 실제보다 과소추정될 수 있습니다
+            ※ 중국(CN)은 baxtel.com 기준이며 실제보다 과소추정될 수 있습니다
           </p>
         )}
       </div>

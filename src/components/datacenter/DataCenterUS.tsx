@@ -96,7 +96,7 @@ export default function DataCenterUS({
         <SummaryCard
           label="미국 DC 총수"
           value={summary.usDcCount ? `${summary.usDcCount.toLocaleString()}개` : "수집 중"}
-          sub="datacentermap 기준"
+          sub="baxtel.com 기준"
         />
         <SummaryCard
           label="하이퍼스케일러 Capex"
