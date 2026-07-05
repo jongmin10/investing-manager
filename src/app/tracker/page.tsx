@@ -32,11 +32,21 @@ interface TrackerData {
 
 const ASSET_CLASSES: AssetClass[] = ["GUARANTEED", "BOND", "MIXED", "EQUITY"];
 
+const ASSET_CLASS_BASIS: Record<AssetClass, string> = {
+  GUARANTEED: "기준금리 × 기간",
+  BOND: "국고채 3년 기준",
+  MIXED: "주식 50% + 채권 50%",
+  EQUITY: "KOSPI 상승률 기준",
+};
+
+const LS_KEY = "tracker:totalInvestment";
+
 function ReturnBadge({ value }: { value: number }) {
   const isPos = value >= 0;
   return (
     <span className={`text-sm font-bold ${isPos ? "text-emerald-600" : "text-red-500"}`}>
-      {isPos ? "+" : ""}{value.toFixed(2)}%
+      {isPos ? "+" : ""}
+      {value.toFixed(2)}%
     </span>
   );
 }
@@ -58,6 +68,9 @@ export default function TrackerPage() {
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [totalInvestmentInput, setTotalInvestmentInput] = useState("");
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ weight: "", purchaseDate: "" });
 
   const totalInvestment = totalInvestmentInput ? parseFloat(totalInvestmentInput) * 10_000 : null;
 
@@ -68,15 +81,33 @@ export default function TrackerPage() {
     purchaseDate: "",
   });
 
+  useEffect(() => {
+    const saved = localStorage.getItem(LS_KEY);
+    if (saved) setTotalInvestmentInput(saved);
+  }, []);
+
   async function fetchData() {
     const res = await fetch("/api/tracker");
-    if (res.status === 401) { setUnauthorized(true); setLoading(false); return; }
-    const json = await res.json();
+    if (res.status === 401) {
+      setUnauthorized(true);
+      setLoading(false);
+      return;
+    }
+    const json: TrackerData = await res.json();
     setData(json);
     setLoading(false);
+    if (json.holdings.length === 0) setShowAddForm(true);
   }
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  function handleTotalInvestmentChange(v: string) {
+    setTotalInvestmentInput(v);
+    if (v) localStorage.setItem(LS_KEY, v);
+    else localStorage.removeItem(LS_KEY);
+  }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -94,6 +125,31 @@ export default function TrackerPage() {
     setSubmitting(false);
   }
 
+  function handleStartEdit(h: Holding) {
+    setEditingId(h.id);
+    setEditForm({
+      weight: String(h.weight),
+      purchaseDate: h.purchaseDate.split("T")[0],
+    });
+  }
+
+  async function handleSaveEdit(id: string) {
+    setSubmitting(true);
+    const res = await fetch(`/api/tracker/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        weight: parseFloat(editForm.weight),
+        purchaseDate: editForm.purchaseDate,
+      }),
+    });
+    if (res.ok) {
+      setEditingId(null);
+      fetchData();
+    }
+    setSubmitting(false);
+  }
+
   async function handleDelete(id: string) {
     setDeletingId(id);
     await fetch(`/api/tracker/${id}`, { method: "DELETE" });
@@ -102,14 +158,21 @@ export default function TrackerPage() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center min-h-[60vh]"><p className="text-gray-400">불러오는 중...</p></div>;
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <p className="text-gray-400">불러오는 중...</p>
+      </div>
+    );
   }
 
   if (unauthorized) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-center">
         <p className="text-gray-600 font-medium text-lg">로그인이 필요한 기능입니다.</p>
-        <a href={`/login?callbackUrl=${encodeURIComponent(pathname)}`} className="bg-blue-500 text-white px-6 py-2.5 rounded-full font-medium hover:bg-blue-600 transition-colors">
+        <a
+          href={`/login?callbackUrl=${encodeURIComponent(pathname)}`}
+          className="bg-blue-500 text-white px-6 py-2.5 rounded-full font-medium hover:bg-blue-600 transition-colors"
+        >
           로그인 →
         </a>
       </div>
@@ -120,129 +183,313 @@ export default function TrackerPage() {
   const portfolio = data?.portfolio;
   const benchmarks = data?.benchmarks;
   const totalWeight = holdings.reduce((s, h) => s + h.weight, 0);
-  const weightWarning = totalWeight > 100 ? "⚠ 비중 합계가 100%를 초과합니다." : totalWeight < 100 && holdings.length > 0 ? `비중 합계: ${totalWeight.toFixed(1)}% (미배분 ${(100 - totalWeight).toFixed(1)}%)` : "";
 
-  const realReturn = portfolio && benchmarks
-    ? Math.round((portfolio.totalReturn - benchmarks.cpi) * 100) / 100
-    : null;
+  const realReturn =
+    portfolio && benchmarks
+      ? Math.round((portfolio.totalReturn - benchmarks.cpi) * 100) / 100
+      : null;
 
-  const chartData = portfolio && benchmarks
-    ? [
-        { name: "내 포트폴리오 (명목)", value: portfolio.totalReturn, color: "#3b82f6" },
-        { name: "실질 수익률", value: realReturn ?? 0, color: "#8b5cf6" },
-        { name: "KOSPI", value: benchmarks.kospi, color: "#10b981" },
-        { name: "물가상승률(CPI)", value: benchmarks.cpi, color: "#f59e0b" },
-      ]
-    : [];
+  const chartData =
+    portfolio && benchmarks
+      ? [
+          { name: "포트폴리오", value: portfolio.totalReturn, color: "#3b82f6" },
+          { name: "실질수익률", value: realReturn ?? 0, color: "#8b5cf6" },
+          { name: "KOSPI", value: benchmarks.kospi, color: "#10b981" },
+          { name: "CPI", value: benchmarks.cpi, color: "#f59e0b" },
+        ]
+      : [];
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       {/* 헤더 */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">나의 수익률 트래커</h1>
-        <p className="text-sm text-gray-400 mt-0.5">퇴직연금 운용 현황을 입력하고 벤치마크와 비교해보세요.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">나의 수익률 트래커</h1>
+          <p className="text-sm text-gray-400 mt-0.5">
+            퇴직연금 운용 현황을 입력하고 벤치마크와 비교해보세요.
+          </p>
+        </div>
+        {holdings.length > 0 && (
+          <button
+            onClick={() => setShowAddForm((v) => !v)}
+            className={`flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+              showAddForm
+                ? "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                : "bg-blue-500 text-white hover:bg-blue-600"
+            }`}
+          >
+            {showAddForm ? "✕ 닫기" : "+ 펀드 추가"}
+          </button>
+        )}
       </div>
 
-      {/* 펀드 추가 폼 */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-        <h2 className="font-semibold text-gray-900 mb-4">보유 펀드 추가</h2>
-        <form onSubmit={handleAdd} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-gray-500 mb-1.5">펀드명</label>
-              <input
-                type="text"
-                placeholder="예: KODEX 200, 삼성 한국형 TDF 2045"
-                value={form.fundName}
-                onChange={(e) => setForm((f) => ({ ...f, fundName: e.target.value }))}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-                required
-              />
+      {/* 펀드 추가 폼 (접기/펼치기) */}
+      {showAddForm && (
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+          <h2 className="font-semibold text-gray-900 mb-4">보유 펀드 추가</h2>
+          <form onSubmit={handleAdd} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-gray-500 mb-1.5">펀드명</label>
+                <input
+                  type="text"
+                  placeholder="예: KODEX 200, 삼성 한국형 TDF 2045"
+                  value={form.fundName}
+                  onChange={(e) => setForm((f) => ({ ...f, fundName: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1.5">자산 유형</label>
+                <select
+                  value={form.assetClass}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, assetClass: e.target.value as AssetClass }))
+                  }
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                >
+                  {ASSET_CLASSES.map((cls) => (
+                    <option key={cls} value={cls}>
+                      {ASSET_CLASS_LABEL[cls]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                  편입 비중 (%)
+                </label>
+                <input
+                  type="number"
+                  placeholder="40"
+                  min={1}
+                  max={100}
+                  value={form.weight}
+                  onChange={(e) => setForm((f) => ({ ...f, weight: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1.5">최초 매수일</label>
+                <input
+                  type="date"
+                  value={form.purchaseDate}
+                  max={new Date().toISOString().split("T")[0]}
+                  onChange={(e) => setForm((f) => ({ ...f, purchaseDate: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  required
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1.5">자산 유형</label>
-              <select
-                value={form.assetClass}
-                onChange={(e) => setForm((f) => ({ ...f, assetClass: e.target.value as AssetClass }))}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-              >
-                {ASSET_CLASSES.map((cls) => (
-                  <option key={cls} value={cls}>{ASSET_CLASS_LABEL[cls]}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1.5">편입 비중 (%)</label>
-              <input
-                type="number"
-                placeholder="40"
-                min={1}
-                max={100}
-                value={form.weight}
-                onChange={(e) => setForm((f) => ({ ...f, weight: e.target.value }))}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1.5">최초 매수일</label>
-              <input
-                type="date"
-                value={form.purchaseDate}
-                max={new Date().toISOString().split("T")[0]}
-                onChange={(e) => setForm((f) => ({ ...f, purchaseDate: e.target.value }))}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-                required
-              />
-            </div>
-          </div>
-          {weightWarning && (
-            <p className={`text-xs ${totalWeight > 100 ? "text-red-500" : "text-gray-400"}`}>{weightWarning}</p>
-          )}
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full bg-blue-500 text-white py-2.5 rounded-xl text-sm font-medium hover:bg-blue-600 transition-colors disabled:opacity-50"
-          >
-            {submitting ? "추가 중..." : "펀드 추가"}
-          </button>
-        </form>
-      </div>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full bg-blue-500 text-white py-2.5 rounded-xl text-sm font-medium hover:bg-blue-600 transition-colors disabled:opacity-50"
+            >
+              {submitting ? "추가 중..." : "펀드 추가"}
+            </button>
+          </form>
+        </div>
+      )}
 
       {/* 보유 펀드 목록 */}
       {holdings.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
           <h2 className="font-semibold text-gray-900 mb-4">보유 펀드 ({holdings.length})</h2>
+
+          {/* 비중 합계 프로그레스 바 */}
+          <div className="mb-5">
+            <div className="flex justify-between text-xs mb-1.5">
+              <span className="text-gray-500">비중 합계</span>
+              <span
+                className={
+                  totalWeight > 100
+                    ? "text-red-500 font-bold"
+                    : totalWeight === 100
+                    ? "text-emerald-600 font-bold"
+                    : "text-gray-500"
+                }
+              >
+                {totalWeight.toFixed(1)}%
+              </span>
+            </div>
+            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-300 ${
+                  totalWeight > 100
+                    ? "bg-red-400"
+                    : totalWeight === 100
+                    ? "bg-emerald-500"
+                    : "bg-blue-400"
+                }`}
+                style={{ width: `${Math.min(totalWeight, 100)}%` }}
+              />
+            </div>
+            {totalWeight < 100 && totalWeight > 0 && (
+              <p className="text-xs text-gray-400 mt-1">
+                미배분 {(100 - totalWeight).toFixed(1)}%
+              </p>
+            )}
+            {totalWeight > 100 && (
+              <p className="text-xs text-red-500 mt-1">⚠ 비중 합계가 100%를 초과합니다</p>
+            )}
+          </div>
+
           <div className="space-y-3">
             {holdings.map((h) => {
               const color = ASSET_CLASS_COLOR[h.assetClass];
+              const isEditing = editingId === h.id;
               return (
-                <div key={h.id} className="flex items-center gap-3 border border-gray-100 rounded-xl px-4 py-3 hover:border-gray-200 transition-colors">
-                  <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: color }} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <span className="text-sm font-semibold text-gray-800">{h.fundName}</span>
-                      <ReturnBadge value={h.estimatedReturn} />
+                <div
+                  key={h.id}
+                  className="border border-gray-100 rounded-xl px-4 py-3 hover:border-gray-200 transition-colors"
+                >
+                  {isEditing ? (
+                    /* 인라인 편집 모드 */
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <div
+                          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                          style={{ background: color }}
+                        />
+                        <span className="text-sm font-semibold text-gray-800">{h.fundName}</span>
+                        <span className="text-xs text-gray-400">
+                          {ASSET_CLASS_LABEL[h.assetClass]}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 mb-3">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">비중 (%)</label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={editForm.weight}
+                            onChange={(e) =>
+                              setEditForm((f) => ({ ...f, weight: e.target.value }))
+                            }
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">최초 매수일</label>
+                          <input
+                            type="date"
+                            value={editForm.purchaseDate}
+                            max={new Date().toISOString().split("T")[0]}
+                            onChange={(e) =>
+                              setEditForm((f) => ({ ...f, purchaseDate: e.target.value }))
+                            }
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleSaveEdit(h.id)}
+                          disabled={submitting}
+                          className="flex-1 bg-blue-500 text-white py-1.5 rounded-lg text-xs font-medium hover:bg-blue-600 transition-colors disabled:opacity-50"
+                        >
+                          {submitting ? "저장 중..." : "저장"}
+                        </button>
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="flex-1 bg-gray-100 text-gray-600 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors"
+                        >
+                          취소
+                        </button>
+                      </div>
                     </div>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {ASSET_CLASS_LABEL[h.assetClass]} · {h.weight}% · 매수일 {new Date(h.purchaseDate).toLocaleDateString("ko-KR")}
-                    </p>
-                    <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${Math.min(h.weight, 100)}%`, background: color }} />
+                  ) : (
+                    /* 일반 보기 모드 */
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                        style={{ background: color }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className="text-sm font-semibold text-gray-800">{h.fundName}</span>
+                          <ReturnBadge value={h.estimatedReturn} />
+                        </div>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {ASSET_CLASS_LABEL[h.assetClass]} · {h.weight}% · 매수일{" "}
+                          {new Date(h.purchaseDate).toLocaleDateString("ko-KR")}
+                        </p>
+                        <p className="text-[10px] text-gray-300 mt-0.5">
+                          {ASSET_CLASS_BASIS[h.assetClass]}
+                        </p>
+                        <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${Math.min(h.weight, 100)}%`,
+                              background: color,
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-0.5 ml-2 flex-shrink-0">
+                        <button
+                          onClick={() => handleStartEdit(h)}
+                          className="p-1.5 text-gray-300 hover:text-blue-400 transition-colors rounded-lg hover:bg-blue-50"
+                          title="편집"
+                        >
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleDelete(h.id)}
+                          disabled={deletingId === h.id}
+                          className="p-1.5 text-gray-200 hover:text-red-400 transition-colors rounded-lg hover:bg-red-50"
+                          title="삭제"
+                        >
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                            <path d="M10 11v6M14 11v6" />
+                            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                  <button
-                    onClick={() => handleDelete(h.id)}
-                    disabled={deletingId === h.id}
-                    className="ml-2 text-gray-200 hover:text-red-400 transition-colors text-lg leading-none flex-shrink-0"
-                    title="삭제"
-                  >
-                    ×
-                  </button>
+                  )}
                 </div>
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* 빈 상태 */}
+      {holdings.length === 0 && !showAddForm && (
+        <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-12 text-center">
+          <p className="text-gray-500 font-medium mb-1">보유 펀드를 추가해보세요</p>
+          <p className="text-sm text-gray-400">
+            펀드를 입력하면 시장 지표 기반으로 추정 수익률을 계산합니다.
+          </p>
         </div>
       )}
 
@@ -255,23 +502,27 @@ export default function TrackerPage() {
           </div>
           <p className="text-xs text-gray-400 mb-5">추정 수익률이며 실제 결과와 다를 수 있습니다.</p>
 
-          {/* 총투자금 입력 */}
+          {/* 총투자금 입력 — localStorage 저장 */}
           <div className="mb-5 flex items-center gap-3">
-            <label className="text-xs font-medium text-gray-500 whitespace-nowrap">총 투자금 (선택)</label>
+            <label className="text-xs font-medium text-gray-500 whitespace-nowrap">
+              총 투자금 (선택)
+            </label>
             <div className="relative flex-1 max-w-xs">
               <input
                 type="number"
                 min={1}
                 placeholder="예: 3000"
                 value={totalInvestmentInput}
-                onChange={(e) => setTotalInvestmentInput(e.target.value)}
+                onChange={(e) => handleTotalInvestmentChange(e.target.value)}
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-blue-300"
               />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">만원</span>
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                만원
+              </span>
             </div>
             {totalInvestmentInput && (
               <button
-                onClick={() => setTotalInvestmentInput("")}
+                onClick={() => handleTotalInvestmentChange("")}
                 className="text-gray-300 hover:text-gray-500 text-lg leading-none"
                 title="초기화"
               >
@@ -280,85 +531,129 @@ export default function TrackerPage() {
             )}
           </div>
 
-          {/* 총 수익률 + 수익금 */}
-          {totalInvestment ? (() => {
-            const profit = totalInvestment * (portfolio.totalReturn / 100);
-            const evaluation = totalInvestment + profit;
-            const isPos = portfolio.totalReturn >= 0;
-            return (
-              <div className="mb-6 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 p-5 text-white">
-                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">포트폴리오 추정 수익</p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
-                  <div>
-                    <p className="text-[11px] text-slate-400 mb-0.5">수익률</p>
-                    <p className={`text-xl font-bold ${isPos ? "text-emerald-400" : "text-red-400"}`}>
-                      {isPos ? "+" : ""}{portfolio.totalReturn.toFixed(2)}%
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] text-slate-400 mb-0.5">수익금</p>
-                    <p className={`text-xl font-bold ${isPos ? "text-emerald-400" : "text-red-400"}`}>
-                      {formatKRW(profit)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] text-slate-400 mb-0.5">평가금액</p>
-                    <p className="text-xl font-bold text-white">
-                      {(evaluation / 10_000).toLocaleString("ko-KR", { maximumFractionDigits: 0 })}만원
-                    </p>
-                  </div>
-                </div>
-                {realReturn !== null && (
-                  <div className="mt-3 flex items-center gap-3 px-3 py-2 bg-slate-700/40 rounded-xl">
-                    <div className="w-2 h-2 rounded-full bg-violet-400 flex-shrink-0" />
-                    <p className="text-[11px] text-slate-400">
-                      실질 수익률 (물가 차감){" "}
-                      <span className={`font-bold text-sm ${realReturn >= 0 ? "text-violet-300" : "text-red-400"}`}>
-                        {realReturn >= 0 ? "+" : ""}{realReturn.toFixed(2)}%
-                      </span>
-                    </p>
-                  </div>
-                )}
-                <div className="border-t border-slate-700 pt-3 mt-3 flex justify-between items-center">
-                  <p className="text-[11px] text-slate-500">
-                    투자원금 {(totalInvestment / 10_000).toLocaleString("ko-KR")}만원 기준
+          {/* 다크 카드 — 수익금 or 수익률 */}
+          {totalInvestment ? (
+            (() => {
+              const profit = totalInvestment * (portfolio.totalReturn / 100);
+              const evaluation = totalInvestment + profit;
+              const isPos = portfolio.totalReturn >= 0;
+              return (
+                <div className="mb-6 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 p-5 text-white">
+                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">
+                    포트폴리오 추정 수익
                   </p>
-                  <span className="text-[10px] text-slate-600 bg-slate-700/60 px-2 py-0.5 rounded-full">추정치</span>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+                    <div>
+                      <p className="text-[11px] text-slate-400 mb-0.5">수익률</p>
+                      <p className={`text-xl font-bold ${isPos ? "text-emerald-400" : "text-red-400"}`}>
+                        {isPos ? "+" : ""}
+                        {portfolio.totalReturn.toFixed(2)}%
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-slate-400 mb-0.5">수익금</p>
+                      <p className={`text-xl font-bold ${isPos ? "text-emerald-400" : "text-red-400"}`}>
+                        {formatKRW(profit)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-slate-400 mb-0.5">평가금액</p>
+                      <p className="text-xl font-bold text-white">
+                        {(evaluation / 10_000).toLocaleString("ko-KR", {
+                          maximumFractionDigits: 0,
+                        })}
+                        만원
+                      </p>
+                    </div>
+                  </div>
+                  {realReturn !== null && (
+                    <div className="mt-3 flex items-center gap-3 px-3 py-2 bg-slate-700/40 rounded-xl">
+                      <div className="w-2 h-2 rounded-full bg-violet-400 flex-shrink-0" />
+                      <p className="text-[11px] text-slate-400">
+                        실질 수익률 (물가 차감){" "}
+                        <span
+                          className={`font-bold text-sm ${realReturn >= 0 ? "text-violet-300" : "text-red-400"}`}
+                        >
+                          {realReturn >= 0 ? "+" : ""}
+                          {realReturn.toFixed(2)}%
+                        </span>
+                      </p>
+                    </div>
+                  )}
+                  <div className="border-t border-slate-700 pt-3 mt-3 flex justify-between items-center">
+                    <p className="text-[11px] text-slate-500">
+                      투자원금 {(totalInvestment / 10_000).toLocaleString("ko-KR")}만원 기준
+                    </p>
+                    <span className="text-[10px] text-slate-600 bg-slate-700/60 px-2 py-0.5 rounded-full">
+                      추정치
+                    </span>
+                  </div>
                 </div>
-              </div>
-            );
-          })() : (
+              );
+            })()
+          ) : (
             <div className="mb-6 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 p-5 text-white">
-              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">포트폴리오 추정 수익률</p>
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">
+                포트폴리오 추정 수익률
+              </p>
               <div className="grid grid-cols-2 gap-4 mb-3">
                 <div>
                   <p className="text-[11px] text-slate-400 mb-0.5">명목 수익률</p>
-                  <p className={`text-3xl font-bold ${portfolio.totalReturn >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                    {portfolio.totalReturn >= 0 ? "+" : ""}{portfolio.totalReturn.toFixed(2)}%
+                  <p
+                    className={`text-3xl font-bold ${portfolio.totalReturn >= 0 ? "text-emerald-400" : "text-red-400"}`}
+                  >
+                    {portfolio.totalReturn >= 0 ? "+" : ""}
+                    {portfolio.totalReturn.toFixed(2)}%
                   </p>
                 </div>
                 {realReturn !== null && (
                   <div>
                     <p className="text-[11px] text-slate-400 mb-0.5">실질 수익률 (물가 차감)</p>
-                    <p className={`text-3xl font-bold ${realReturn >= 0 ? "text-violet-400" : "text-red-400"}`}>
-                      {realReturn >= 0 ? "+" : ""}{realReturn.toFixed(2)}%
+                    <p
+                      className={`text-3xl font-bold ${realReturn >= 0 ? "text-violet-400" : "text-red-400"}`}
+                    >
+                      {realReturn >= 0 ? "+" : ""}
+                      {realReturn.toFixed(2)}%
                     </p>
                   </div>
                 )}
               </div>
               <div className="border-t border-slate-700 pt-2">
-                <p className="text-[11px] text-slate-500">명목 {portfolio.totalReturn >= 0 ? "+" : ""}{portfolio.totalReturn.toFixed(2)}% − 물가 {benchmarks!.cpi.toFixed(2)}% = 실질 {realReturn !== null ? (realReturn >= 0 ? "+" : "") + realReturn.toFixed(2) : "-"}%</p>
+                <p className="text-[11px] text-slate-500">
+                  명목 {portfolio.totalReturn >= 0 ? "+" : ""}
+                  {portfolio.totalReturn.toFixed(2)}% − 물가 {benchmarks!.cpi.toFixed(2)}% = 실질{" "}
+                  {realReturn !== null
+                    ? (realReturn >= 0 ? "+" : "") + realReturn.toFixed(2)
+                    : "-"}
+                  %
+                </p>
               </div>
             </div>
           )}
 
-          <div className="h-56">
+          {/* 비교 바 차트 — Y축 레이블 단축 */}
+          <div className="h-52">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 30, left: 0, bottom: 0 }}>
+              <BarChart
+                data={chartData}
+                layout="vertical"
+                margin={{ top: 0, right: 36, left: 0, bottom: 0 }}
+              >
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                 <XAxis type="number" tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={80} />
-                <Tooltip formatter={(v) => [`${Number(v).toFixed(2)}%`, "수익률"]} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={62} />
+                <Tooltip
+                  formatter={(v) => [`${Number(v).toFixed(2)}%`, "수익률"]}
+                  labelFormatter={(label) => {
+                    const map: Record<string, string> = {
+                      포트폴리오: "내 포트폴리오 (명목)",
+                      실질수익률: "실질 수익률 (물가 차감)",
+                      KOSPI: "KOSPI",
+                      CPI: "물가상승률 (CPI)",
+                    };
+                    return map[label] ?? label;
+                  }}
+                />
                 <ReferenceLine x={0} stroke="#9ca3af" />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                   {chartData.map((entry, i) => (
@@ -370,13 +665,19 @@ export default function TrackerPage() {
           </div>
 
           {/* 범례 */}
-          <div className="mt-4 flex flex-wrap gap-4 justify-center">
-            {chartData.map((d) => (
-              <div key={d.name} className="flex items-center gap-1.5 text-xs text-gray-600">
+          <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 justify-center">
+            {[
+              { short: "포트폴리오", label: "내 포트폴리오 (명목)", color: "#3b82f6", value: portfolio.totalReturn },
+              { short: "실질수익률", label: "실질 수익률", color: "#8b5cf6", value: realReturn ?? 0 },
+              { short: "KOSPI", label: "KOSPI", color: "#10b981", value: benchmarks!.kospi },
+              { short: "CPI", label: "CPI", color: "#f59e0b", value: benchmarks!.cpi },
+            ].map((d) => (
+              <div key={d.short} className="flex items-center gap-1.5 text-xs text-gray-600">
                 <span className="w-2.5 h-2.5 rounded-full" style={{ background: d.color }} />
-                <span>{d.name}</span>
+                <span>{d.label}</span>
                 <span className={`font-bold ${d.value >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                  {d.value >= 0 ? "+" : ""}{d.value.toFixed(2)}%
+                  {d.value >= 0 ? "+" : ""}
+                  {d.value.toFixed(2)}%
                 </span>
               </div>
             ))}
@@ -384,17 +685,9 @@ export default function TrackerPage() {
         </div>
       )}
 
-      {/* 빈 상태 */}
-      {holdings.length === 0 && (
-        <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-12 text-center">
-          <p className="text-gray-500 font-medium mb-1">보유 펀드를 추가해보세요</p>
-          <p className="text-sm text-gray-400">펀드를 입력하면 시장 지표 기반으로 추정 수익률을 계산합니다.</p>
-        </div>
-      )}
-
       <p className="text-xs text-gray-400 text-center leading-relaxed">
-        수익률은 KOSPI·국고채·기준금리 등 시장 지표 기반 추정치입니다. 실제 펀드 수익률과 차이가 있을 수 있으며,
-        투자 결정의 근거로 사용하지 마세요.
+        수익률은 KOSPI·국고채·기준금리 등 시장 지표 기반 추정치입니다. 실제 펀드 수익률과 차이가
+        있을 수 있으며, 투자 결정의 근거로 사용하지 마세요.
       </p>
     </div>
   );
