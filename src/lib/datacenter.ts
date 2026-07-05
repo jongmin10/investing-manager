@@ -26,6 +26,8 @@ export interface CountryRecord {
   country: string;
   value: number;
   period: string;
+  wowPct: number | null; // 주간 증가율 (전주 대비)
+  momPct: number | null; // 월간 증가율 (4주 전 대비)
 }
 
 export interface SemiconPoint {
@@ -72,11 +74,15 @@ export async function getDCPowerSeries(): Promise<PowerPoint[]> {
   return rows.reverse().map((r) => ({ period: r.period, value: r.value }));
 }
 
-// ─── 미국 DC 수 추이 (전체 이력) ─────────────────────────────────────────────
+// ─── 미국 DC 수 추이 (주별 이력) ─────────────────────────────────────────────
 
 export async function getDCCountUsSeries(): Promise<DCCountPoint[]> {
   const rows = await prisma.dataCenterRecord.findMany({
-    where: { metric: "DC_COUNT", country: "US" },
+    where: {
+      metric: "DC_COUNT",
+      country: "US",
+      period: { contains: "-W" }, // ISO 주별 레코드만
+    },
     orderBy: { period: "asc" },
   });
   return rows.map((r) => ({ period: r.period, value: r.value }));
@@ -90,22 +96,33 @@ export async function getDCCountries(): Promise<CountryRecord[]> {
     orderBy: { period: "desc" },
   });
 
-  // 국가별 최신 1건만
-  const seen = new Set<string>();
-  const latest: CountryRecord[] = [];
+  // 국가별로 기간 내림차순 정렬: [0]=최신, [1]=전주, [4]=4주전(~1개월)
+  const byCountry = new Map<string, typeof rows>();
   for (const r of rows) {
-    if (!seen.has(r.country)) {
-      seen.add(r.country);
-      latest.push({ country: r.country, value: r.value, period: r.period });
-    }
+    const list = byCountry.get(r.country) ?? [];
+    list.push(r);
+    byCountry.set(r.country, list);
   }
-  return latest.sort((a, b) => b.value - a.value);
+
+  const result: CountryRecord[] = [];
+  for (const [country, list] of byCountry) {
+    const cur = list[0];
+    if (!cur) continue;
+    const prev1 = list[1] ?? null;  // 1주 전
+    const prev4 = list[4] ?? null;  // 4주 전 (~1개월)
+    const wowPct = prev1 ? ((cur.value - prev1.value) / prev1.value) * 100 : null;
+    const momPct = prev4 ? ((cur.value - prev4.value) / prev4.value) * 100 : null;
+    result.push({ country, value: cur.value, period: cur.period, wowPct, momPct });
+  }
+  return result.sort((a, b) => b.value - a.value);
 }
 
 // ─── 미국 요약 카드 계산 ─────────────────────────────────────────────────────
 
 export interface DCSummary {
   usDcCount: number | null;
+  usDCWoW: number | null;           // 미국 DC 수 전주 대비 증가율 (%)
+  usDCMoM: number | null;           // 미국 DC 수 4주 전 대비 증가율 (%)
   capexTotalLatest: number | null;   // 최근 분기 4사 합산 $B
   capexTotalPrev: number | null;     // 전분기 합산 (QoQ 계산용)
   powerLatest: number | null;        // 최근 월 GWh
@@ -115,10 +132,15 @@ export interface DCSummary {
 }
 
 export async function getDCSummary(): Promise<DCSummary> {
-  const [dcCountRow, capexRows, powerRows] = await Promise.all([
-    prisma.dataCenterRecord.findFirst({
-      where: { metric: "DC_COUNT", country: "US" },
+  const [dcCountRows, capexRows, powerRows] = await Promise.all([
+    prisma.dataCenterRecord.findMany({
+      where: {
+        metric: "DC_COUNT",
+        country: "US",
+        period: { contains: "-W" }, // ISO 주별 레코드만
+      },
       orderBy: { period: "desc" },
+      take: 6, // WoW(1주), MoM(4주) 계산용
     }),
     prisma.dataCenterRecord.findMany({
       where: {
@@ -153,13 +175,22 @@ export async function getDCSummary(): Promise<DCSummary> {
           .reduce((s, r) => s + r.value, 0)
       : null;
 
+  // DC 카운트: 최신 + 전주(index=1) + 4주 전(index=4)
+  const dcCur = dcCountRows[0] ?? null;
+  const dcPrev1 = dcCountRows[1] ?? null; // 1주 전
+  const dcPrev4 = dcCountRows[4] ?? null; // 4주 전 (~1개월)
+  const usDCWoW = dcCur && dcPrev1 ? ((dcCur.value - dcPrev1.value) / dcPrev1.value) * 100 : null;
+  const usDCMoM = dcCur && dcPrev4 ? ((dcCur.value - dcPrev4.value) / dcPrev4.value) * 100 : null;
+
   // 전력: 최신 + 12개월 전
   const powerLatest = powerRows[0]?.value ?? null;
   const latestPowerPeriod = powerRows[0]?.period ?? null;
   const powerYoy = powerRows[12]?.value ?? null; // 정확히 12개월 전 (index=12)
 
   return {
-    usDcCount: dcCountRow?.value ?? null,
+    usDcCount: dcCur?.value ?? null,
+    usDCWoW,
+    usDCMoM,
     capexTotalLatest: sumCapex(latestPeriod),
     capexTotalPrev: sumCapex(prevPeriod),
     powerLatest,

@@ -96,7 +96,12 @@ export default function DataCenterUS({
         <SummaryCard
           label="미국 DC 총수"
           value={summary.usDcCount ? `${summary.usDcCount.toLocaleString()}개` : "수집 중"}
-          sub="baxtel.com 기준"
+          sub={
+            summary.usDCWoW != null
+              ? `WoW ${summary.usDCWoW >= 0 ? "+" : ""}${summary.usDCWoW.toFixed(2)}% · MoM ${summary.usDCMoM != null ? (summary.usDCMoM >= 0 ? "+" : "") + summary.usDCMoM.toFixed(2) + "%" : "—"}`
+              : "baxtel.com 기준"
+          }
+          subColor={summary.usDCWoW != null ? (summary.usDCWoW >= 0 ? "text-emerald-600" : "text-red-500") : undefined}
         />
         <SummaryCard
           label="하이퍼스케일러 Capex"
