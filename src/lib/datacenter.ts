@@ -3,12 +3,13 @@ import { prisma } from "@/lib/prisma";
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 
 export interface CapexPoint {
-  period: string; // "2025Q1"
+  period: string;  // "2025Q1"
   msft: number;
   amzn: number;
   goog: number;
   meta: number;
   total: number;
+  partial: boolean; // Q4(Oct-Dec): AMZN·GOOG·META는 10-K 보고라 MSFT만 존재
 }
 
 export interface PowerPoint {
@@ -54,11 +55,10 @@ export async function getDCCapexSeries(): Promise<CapexPoint[]> {
     return { period, msft, amzn, goog, meta, total: msft + amzn + goog + meta, present };
   });
 
-  // MSFT는 7월-6월 회계연도 → Q4(10월-12월)만 보고 → 단일 회사만 있는 분기 제외
+  // 모든 분기 표시. Q4(Oct-Dec)는 AMZN·GOOG·META가 10-K 보고라 MSFT만 존재 → partial 플래그
   return all
-    .filter((p) => p.present >= 3)
-    .slice(-8)
-    .map(({ present: _, ...rest }) => rest);
+    .slice(-10)
+    .map(({ present, ...rest }) => ({ ...rest, partial: present < 3 }));
 }
 
 // ─── 버지니아 전력 수요 추이 (최근 24개월) ───────────────────────────────────

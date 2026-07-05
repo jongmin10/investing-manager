@@ -69,10 +69,10 @@ function fmtQ(p: string) {
   return p.replace(/^20/, "");
 }
 
-// 월 레이블 포맷 "2025-06" → "6월"
+// 월 레이블 포맷 "2025-06" → "'25.6" (연도 항상 표시해 2년치 구분)
 function fmtM(p: string) {
-  const [, m] = p.split("-");
-  return `${parseInt(m)}월`;
+  const [y, m] = p.split("-");
+  return `'${y.slice(2)}.${parseInt(m)}`;
 }
 
 export default function DataCenterUS({
@@ -127,19 +127,33 @@ export default function DataCenterUS({
         {capexSeries.length === 0 ? (
           <EmptyState />
         ) : (
-          <ResponsiveContainer width="100%" height={240}>
-            <ComposedChart data={capexSeries.map((d) => ({ ...d, period: fmtQ(d.period) }))}>
-              <XAxis dataKey="period" tick={{ fontSize: 11 }} tickLine={false} />
-              <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}B`} width={48} tickLine={false} axisLine={false} />
-              <Tooltip formatter={(v) => [`$${Number(v).toFixed(1)}B`, String(v)]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-              <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }} />
-              <Bar dataKey="msft" name="MSFT" stackId="a" fill={COMPANY_COLORS.msft} radius={[0,0,0,0]} />
-              <Bar dataKey="amzn" name="AMZN" stackId="a" fill={COMPANY_COLORS.amzn} />
-              <Bar dataKey="goog" name="GOOG" stackId="a" fill={COMPANY_COLORS.goog} />
-              <Bar dataKey="meta" name="META" stackId="a" fill={COMPANY_COLORS.meta} radius={[3,3,0,0]} />
-              <Line type="monotone" dataKey="total" name="합산" stroke="#374151" strokeWidth={2} dot={{ r: 3 }} />
-            </ComposedChart>
-          </ResponsiveContainer>
+          <>
+            <ResponsiveContainer width="100%" height={240}>
+              <ComposedChart data={capexSeries.map((d) => ({ ...d, period: fmtQ(d.period) }))}>
+                <XAxis dataKey="period" tick={{ fontSize: 11 }} tickLine={false} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}B`} width={48} tickLine={false} axisLine={false} />
+                <Tooltip
+                  formatter={(v) => [`$${Number(v).toFixed(1)}B`, String(v)]}
+                  labelFormatter={(label, payload) => {
+                    const isPartial = payload?.[0]?.payload?.partial;
+                    return isPartial ? `${label} ※MSFT만 집계` : String(label);
+                  }}
+                  contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                />
+                <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="msft" name="MSFT" stackId="a" fill={COMPANY_COLORS.msft} radius={[0,0,0,0]} />
+                <Bar dataKey="amzn" name="AMZN" stackId="a" fill={COMPANY_COLORS.amzn} />
+                <Bar dataKey="goog" name="GOOG" stackId="a" fill={COMPANY_COLORS.goog} />
+                <Bar dataKey="meta" name="META" stackId="a" fill={COMPANY_COLORS.meta} radius={[3,3,0,0]} />
+                <Line type="monotone" dataKey="total" name="합산" stroke="#374151" strokeWidth={2} dot={{ r: 3 }} />
+              </ComposedChart>
+            </ResponsiveContainer>
+            {capexSeries.some((d) => d.partial) && (
+              <p className="text-[10px] text-gray-400 mt-1">
+                ※ Q4(10~12월): AMZN·GOOG·META는 연간보고서(10-K) 보고 — MSFT 단독 집계
+              </p>
+            )}
+          </>
         )}
       </div>
 
