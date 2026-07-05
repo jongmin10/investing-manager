@@ -174,7 +174,7 @@ export default function DataCenterUS({
                   <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <XAxis dataKey="label" tick={{ fontSize: 10 }} interval={2} tickLine={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 12 }} interval={2} tickLine={false} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${Math.round(v / 1000)}K`} width={40} tickLine={false} axisLine={false} />
               <Tooltip formatter={(v) => [`${Math.round(Number(v)).toLocaleString()} GWh`, "버지니아 전력"]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
               <Area type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={2} fill="url(#powerGrad)" dot={false} />
@@ -214,7 +214,7 @@ export default function DataCenterUS({
           </p>
           <ResponsiveContainer width="100%" height={220}>
             <ComposedChart data={corrData.map((d) => ({ ...d, label: fmtM(d.period) }))}>
-              <XAxis dataKey="label" tick={{ fontSize: 10 }} interval={2} tickLine={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 12 }} interval={2} tickLine={false} />
               <YAxis yAxisId="left" tick={{ fontSize: 10 }} tickFormatter={(v) => `$${v.toFixed(0)}B`} width={44} tickLine={false} axisLine={false} />
               <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} tickFormatter={(v) => `$${v.toFixed(0)}B`} width={44} tickLine={false} axisLine={false} />
               <Tooltip
