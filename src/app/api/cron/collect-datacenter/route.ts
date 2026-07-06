@@ -5,6 +5,7 @@ import {
   collectEDGARCapex,
   collectEIAPower,
   collectDCMapCounts,
+  collectSdllmtk,
 } from "@/lib/datacenter-collector";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +18,8 @@ export const maxDuration = 60;
  * ① EDGAR Capex (4사, ~15s)
  * ② EIA 버지니아 전력 수요 (~2s)
  * ③ datacentermap 12개국 DC 카운트 (~12s)
- * 합산 ~29s → maxDuration 60s 여유 있음
+ * ④ Silicon Data SDLLMTK (~2s)
+ * 합산 ~33s → maxDuration 60s 여유 있음
  */
 export async function GET(req: NextRequest) {
   if (!isAuthorizedCron(req)) {
@@ -66,6 +68,19 @@ export async function GET(req: NextRequest) {
     itemsFailed++;
     errors.push(`DCMAP: ${(e as Error).message}`);
     console.error("[dc] DCMAP 수집 오류:", e);
+  }
+
+  // ④ Silicon Data SDLLMTK (LLM 토큰 지출 지수)
+  try {
+    const r = await collectSdllmtk();
+    itemsOk += r.ok;
+    itemsFailed += r.failed.length;
+    if (r.failed.length) errors.push(...r.failed.map((e) => `SDLLMTK: ${e}`));
+    console.log(`[dc] SDLLMTK: ${r.ok}건, 실패 ${r.failed.length}건`);
+  } catch (e) {
+    itemsFailed++;
+    errors.push(`SDLLMTK: ${(e as Error).message}`);
+    console.error("[dc] SDLLMTK 수집 오류:", e);
   }
 
   await recordCollectionRun("datacenter", startedAt, {

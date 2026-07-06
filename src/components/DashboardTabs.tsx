@@ -8,7 +8,7 @@ import DataCenterGlobal from "@/components/datacenter/DataCenterGlobal";
 import type { IndicatorType } from "@/lib/indicators";
 import type { MarketSummary } from "@/lib/analysis";
 import type {
-  CapexPoint, PowerPoint, DCCountPoint, SemiconPoint,
+  CapexPoint, PowerPoint, DCCountPoint, SemiconPoint, SdllmtkPoint,
   DCSummary, CountryRecord,
 } from "@/lib/datacenter";
 
@@ -27,6 +27,7 @@ interface DCData {
   dcCountSeries: DCCountPoint[];
   countries: CountryRecord[];
   semiconSeries: SemiconPoint[];
+  sdllmtkSeries: SdllmtkPoint[];
 }
 
 interface Props {
@@ -111,6 +112,7 @@ export default function DashboardTabs({ indicators, summary, lastUpdated, dcData
               powerSeries={dcData.powerSeries}
               dcCountSeries={dcData.dcCountSeries}
               semiconSeries={dcData.semiconSeries}
+              sdllmtkSeries={dcData.sdllmtkSeries}
             />
           )}
           {dcSub === "global" && (

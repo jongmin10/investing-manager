@@ -357,3 +357,54 @@ export async function collectDCMapCounts(): Promise<{
   }
   return { ok, failed };
 }
+
+// ─── Silicon Data SDLLMTK 스크래핑 ───────────────────────────────────────────
+// portal.silicondata.com/token-index-chart 은 로그인 없이 최근 7일치 blended 값을
+// Next.js RSC 페이로드(__next_f.push)에 내장해 제공한다.
+// 파싱: "indexes":{"YYYY-MM-DD":"1.6261",...} 패턴 추출 → 날짜별 upsert
+
+export async function collectSdllmtk(): Promise<{ ok: number; failed: string[] }> {
+  const url = "https://portal.silicondata.com/token-index-chart";
+  let html: string;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    html = await res.text();
+  } catch (e) {
+    return { ok: 0, failed: [`fetch: ${(e as Error).message}`] };
+  }
+
+  // RSC 페이로드는 JS 문자열 안에 JSON이 백슬래시 이스케이프된 채로 내장됨
+  // 실제 HTML 텍스트: \"indexes\":{\"2026-07-04\":\"1.6261\",...}
+  const blockMatch = html.match(/\\"indexes\\":\{([^}]+)\}/);
+  if (!blockMatch) return { ok: 0, failed: ["indexes 파싱 실패"] };
+
+  const entries = [...blockMatch[1].matchAll(/\\"(\d{4}-\d{2}-\d{2})\\":\\"([\d.]+)\\"/g)];
+  if (entries.length === 0) return { ok: 0, failed: ["날짜-값 엔트리 없음"] };
+
+  let ok = 0;
+  const failed: string[] = [];
+  for (const [, period, raw] of entries) {
+    const value = parseFloat(raw);
+    if (isNaN(value)) { failed.push(`${period}: NaN`); continue; }
+    try {
+      await prisma.dataCenterRecord.upsert({
+        where: { metric_country_period: { metric: "SDLLMTK", country: "GLOBAL", period } },
+        create: { source: "SILICON_DATA", metric: "SDLLMTK", country: "GLOBAL", period, value, unit: "USD_PER_1M_TOKENS" },
+        update: { value, collectedAt: new Date() },
+      });
+      ok++;
+    } catch (e) {
+      failed.push(`${period}: ${(e as Error).message}`);
+    }
+  }
+  return { ok, failed };
+}
