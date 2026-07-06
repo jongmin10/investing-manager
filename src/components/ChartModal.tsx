@@ -29,6 +29,14 @@ export default function ChartModal({ data, onClose }: ChartModalProps) {
   const [history, setHistory] = useState<{ value: number; recordedAt: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const periodStats = history.length > 0
+    ? {
+        avg: history.reduce((s, d) => s + d.value, 0) / history.length,
+        min: Math.min(...history.map((d) => d.value)),
+        max: Math.max(...history.map((d) => d.value)),
+      }
+    : null;
+
   const fetchHistory = useCallback(
     async (p: string) => {
       setLoading(true);
@@ -136,6 +144,30 @@ export default function ChartModal({ data, onClose }: ChartModalProps) {
               <TrendChart type={data.type} data={history} mini={false} />
             )}
           </div>
+
+          {/* 기간 통계 */}
+          {!loading && periodStats && (
+            <div className="grid grid-cols-3 gap-2 text-center bg-gray-50 border border-gray-100 rounded-xl p-3">
+              <div>
+                <p className="text-[11px] text-gray-400 mb-0.5">기간 최저</p>
+                <p className="text-sm font-semibold text-blue-600 tabular-nums">
+                  {formatValue(data.type, periodStats.min)}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] text-gray-400 mb-0.5">기간 평균</p>
+                <p className="text-sm font-semibold text-gray-800 tabular-nums">
+                  {formatValue(data.type, periodStats.avg)}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] text-gray-400 mb-0.5">기간 최고</p>
+                <p className="text-sm font-semibold text-red-500 tabular-nums">
+                  {formatValue(data.type, periodStats.max)}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* 설명 */}
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">

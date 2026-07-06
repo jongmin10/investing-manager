@@ -29,11 +29,15 @@ function formatDate(iso: string, mini: boolean): string {
 }
 
 function formatYTick(v: number, dp: number): string {
-  // 1천 이상은 K 단위. 천 단위를 버리면(예: 14000·14200·14400 → 모두 "14K")
-  // 틱이 같은 라벨로 뭉개지므로, 정수가 아니면 소수 1자리로 정확히 표기
-  if (v >= 1000) {
+  // 10000 이상: K 단위 (NASDAQ100 등)
+  if (v >= 10000) {
     const k = v / 1000;
     return `${Number.isInteger(k) ? k : k.toFixed(1)}K`;
+  }
+  // 1000~9999: 정수 그대로 표시. K 단위로 축약하면 환율(1310·1320·1330 → 모두 "1.3K")처럼
+  // 틱 라벨이 겹쳐 Y축을 읽을 수 없으므로 풀 숫자를 사용한다.
+  if (v >= 1000) {
+    return v.toFixed(0);
   }
   return v.toFixed(dp);
 }
@@ -82,9 +86,10 @@ export default function TrendChart({ type, data, mini = false }: TrendChartProps
   /* ── 모달용 상세 차트 ── */
   const tickInterval = Math.max(1, Math.floor(chartData.length / 7));
 
-  // 대형 숫자(주가지수 등) Y축 여백 동적 계산
-  const maxVal = Math.max(...data.map((d) => d.value));
-  const yWidth = maxVal >= 10000 ? 48 : maxVal >= 1000 ? 52 : 60;
+  // 대형 숫자(주가지수·환율 등) Y축 여백 동적 계산. 빈 데이터 방어
+  const maxVal = data.length > 0 ? Math.max(...data.map((d) => d.value)) : 0;
+  // 1000~9999는 4자리 정수 표시 → 10000+ K 표기보다 더 넓은 여백 필요
+  const yWidth = maxVal >= 10000 ? 48 : maxVal >= 1000 ? 56 : 60;
 
   return (
     <ResponsiveContainer width="100%" height="100%">
