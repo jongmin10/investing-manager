@@ -4,8 +4,9 @@ import {
   Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
   Line, ComposedChart, AreaChart, Area,
 } from "recharts";
+import AiTokenIndex from "@/components/datacenter/AiTokenIndex";
 import type {
-  CapexPoint, PowerPoint, DCCountPoint, SemiconPoint, DCSummary,
+  CapexPoint, PowerPoint, DCCountPoint, SemiconPoint, SdllmtkPoint, DCSummary,
 } from "@/lib/datacenter";
 
 interface Props {
@@ -14,6 +15,7 @@ interface Props {
   powerSeries: PowerPoint[];
   dcCountSeries: DCCountPoint[];
   semiconSeries: SemiconPoint[];
+  sdllmtkSeries: SdllmtkPoint[];
 }
 
 const COMPANY_COLORS = {
@@ -76,7 +78,7 @@ function fmtM(p: string) {
 }
 
 export default function DataCenterUS({
-  summary, capexSeries, powerSeries, dcCountSeries, semiconSeries,
+  summary, capexSeries, powerSeries, dcCountSeries, semiconSeries, sdllmtkSeries,
 }: Props) {
   const momentum = capexMomentum(capexSeries);
 
@@ -162,6 +164,9 @@ export default function DataCenterUS({
         )}
       </div>
 
+      {/* SDLLMTK: AI 실수요 지수 */}
+      <AiTokenIndex series={sdllmtkSeries} />
+
       {/* 버지니아 전력 추이 */}
       <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
         <h3 className="text-sm font-semibold text-gray-700 mb-1">
@@ -236,6 +241,7 @@ export default function DataCenterUS({
           </p>
         </div>
       )}
+
     </div>
   );
 }

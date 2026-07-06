@@ -35,6 +35,11 @@ export interface SemiconPoint {
   exportUsdB: number;
 }
 
+export interface SdllmtkPoint {
+  period: string; // "2026-07-04"
+  value: number;  // USD per million tokens
+}
+
 // ─── 미국 Capex 추이 (최근 8분기) ────────────────────────────────────────────
 
 export async function getDCCapexSeries(): Promise<CapexPoint[]> {
@@ -212,4 +217,15 @@ export async function getSemiconExportSeries(): Promise<SemiconPoint[]> {
     period: r.yearMonth,
     exportUsdB: Number(r.exportUsd) / 1_000_000_000,
   }));
+}
+
+// ─── SDLLMTK 시계열 (최근 90일) ──────────────────────────────────────────────
+
+export async function getSdllmtkSeries(): Promise<SdllmtkPoint[]> {
+  const rows = await prisma.dataCenterRecord.findMany({
+    where: { metric: "SDLLMTK", country: "GLOBAL" },
+    orderBy: { period: "asc" },
+    take: 90,
+  });
+  return rows.map((r) => ({ period: r.period, value: r.value }));
 }

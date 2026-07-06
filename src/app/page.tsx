@@ -11,6 +11,7 @@ import {
   getDCCountries,
   getDCSummary,
   getSemiconExportSeries,
+  getSdllmtkSeries,
 } from "@/lib/datacenter";
 import DashboardTabs from "@/components/DashboardTabs";
 
@@ -72,6 +73,7 @@ export default async function DashboardPage() {
     dcCountSeries,
     countries,
     semiconSeries,
+    sdllmtkSeries,
   ] = await Promise.all([
     getLatestIndicators(),
     getDCSummary(),
@@ -80,6 +82,7 @@ export default async function DashboardPage() {
     getDCCountUsSeries(),
     getDCCountries(),
     getSemiconExportSeries(),
+    getSdllmtkSeries(),
   ]);
 
   const realtimeRecord = indicators.find((i) => REALTIME_TYPES.has(i.type));
@@ -107,6 +110,7 @@ export default async function DashboardPage() {
             dcCountSeries,
             countries,
             semiconSeries,
+            sdllmtkSeries,
           }}
         />
       </Suspense>
